@@ -8,9 +8,9 @@ def chat():
     content = request.json
     user_message = content.get('message')
 
-    response_generator = generate_response(user_message)
+    response_json = generate_response(user_message)
 
-    return Response(stream_with_context(response_generator), content_type='text/plain; charset=utf-8')
+    return Response(stream_with_context(response_json), content_type='application/json')
 
 def generate_response(prompt_text):
     response_generator = Generation.call(
@@ -22,9 +22,7 @@ def generate_response(prompt_text):
     full_text = ""
     for response in response_generator:
         if "text" in response.output:
-            # Extend the text with the new chunk and yield it
-            full_text += response.output["text"]
-            yield full_text
+            yield jsonify({"text": response.output["text"]})
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
