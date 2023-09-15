@@ -33,7 +33,7 @@ def generate_response(prompt_text):
 def simulated_generator():
     messages = [
         "I am a",
-        "I am a large language model created by DAMO Academy",
+        " large language model created by DAMO Academy",
         ". I am called QianWen",
         "."
     ]
