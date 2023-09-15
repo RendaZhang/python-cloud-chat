@@ -3,31 +3,31 @@ from dashscope import Generation
 
 app = Flask(__name__)
 
-@app.route('/chat', methods=['POST'])
+@app.route('/cloudchat/chat', methods=['POST'])
 def chat():
-    data = request.json
-    message = data['message']
-
+    data = request.get_json()
+    user_message = data['message']
+    
+    # Use the dashscope SDK to get the response
     response_generator = Generation.call(
         model='qwen-turbo',
-        prompt=message,
+        prompt=user_message,
         stream=True,
         top_p=0.8
     )
-
+    
     def generate():
         head_idx = 0
         for resp in response_generator:
             paragraph = resp.output['text']
-            yield paragraph[head_idx:]
+            # Extract the new part of the text to send
+            new_text = paragraph[head_idx:len(paragraph)]
             if paragraph.rfind('\n') != -1:
                 head_idx = paragraph.rfind('\n') + 1
-
-    return Response(generate(), content_type='text/plain')
-
-@app.route('/')
-def hello():
-    return "Hello from Flask!"
+            # Yield the new part of the text as a JSON string
+            yield f"data: {json.dumps({'message': new_text})}\n\n"
+    
+    return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(debug=True, port=8080, threaded=True)
