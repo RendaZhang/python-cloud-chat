@@ -24,12 +24,8 @@ def generate_response(prompt_text):
     for response in response_generator:
         if "text" in response.output and "output_tokens" in response.usage:
             current_output_tokens = response.usage["output_tokens"]
-            current_message = response.output["text"]
-            
-            # Calculate the start position of the new message chunk
-            start_pos = len(current_message) - (current_output_tokens - last_output_tokens)
-            new_message = current_message[start_pos:]
-            
+            new_output_tokens = current_output_tokens - last_output_tokens
+            new_message = response.output["text"][-new_output_tokens:]
             last_output_tokens = current_output_tokens
             yield json.dumps({"text": new_message}).encode('utf-8') + b'\n'
 
