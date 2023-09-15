@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, request, stream_with_context, Response
 from http import HTTPStatus
 from dashscope import Generation
 
@@ -9,28 +9,27 @@ def hello():
     return "Hello from Flask!"
 
 @app.route('/chat', methods=['POST'])
-def chat_with_ai():
-    user_message = request.json.get('message', '')
+def chat():
+    data = request.get_json()
+    message = data.get('message', '')
 
-    messages = [
-        {'role': 'system', 'content': 'My name is Renda Zhang'},
-        {'role': 'user', 'content': user_message}
-    ]
+    # The AI response will be streamed using the generator function
+    def generate():
+        prompt_text = message
+        response_generator = Generation.call(
+            model='qwen-turbo',
+            prompt=prompt_text,
+            stream=True,
+            top_p=0.8)
 
-    gen = Generation()
-    response = gen.call(
-        Generation.Models.qwen_turbo,
-        messages=messages,
-        result_format='message',
-    )
+        head_idx = 0
+        for resp in response_generator:
+            paragraph = resp.output['text']
+            yield paragraph[head_idx:len(paragraph)]
+            if paragraph.rfind('\n') != -1:
+                head_idx = paragraph.rfind('\n') + 1
 
-    if response.status_code == HTTPStatus.OK:
-        # Extract the assistant's response from the DashScope API's response
-        assistant_message = response.output["choices"][0]["message"]["content"]
-        return jsonify({"message": assistant_message}), HTTPStatus.OK
-    else:
-        error_message = f"Request id: {response.request_id}, Status code: {response.status_code}, error code: {response.code}, error message: {response.message}"
-        return jsonify({"error": error_message}), HTTPStatus.INTERNAL_SERVER_ERROR
+    return Response(stream_with_context(generate()), content_type='text/plain')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
