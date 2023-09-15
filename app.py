@@ -5,7 +5,7 @@ import json
 
 app = Flask(__name__)
 
-#@app.route('/chat', methods=['POST'])
+@app.route('/chat', methods=['POST'])
 def chat():
     content = request.json
     user_message = content.get('message')
@@ -37,13 +37,13 @@ def simulated_generator():
         ". I am called QianWen",
         "."
     ]
-    
+
     for message in messages:
         yield message
         time.sleep(1)
 
-@app.route('/chat', methods=['POST'])
-def chat():
+#@app.route('/chat', methods=['POST'])
+def simulated_chat():
     user_message = request.json.get('message')
 
     # This is just a simulated response. In reality, you'd call your model here.
