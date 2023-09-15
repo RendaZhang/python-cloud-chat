@@ -1,5 +1,6 @@
-from flask import Flask, render_template, request, jsonify, Response, stream_with_context
+from flask import Flask, request, jsonify, render_template, stream_with_context, Response
 from dashscope import Generation
+import json
 
 app = Flask(__name__)
 
@@ -19,10 +20,9 @@ def generate_response(prompt_text):
         stream=True,
         top_p=0.8
     )
-    full_text = ""
     for response in response_generator:
         if "text" in response.output:
-            yield jsonify({"text": response.output["text"]})
+            yield json.dumps({"text": response.output["text"]}).encode('utf-8') + b'\n'
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
