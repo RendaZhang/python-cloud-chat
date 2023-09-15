@@ -20,9 +20,13 @@ def generate_response(prompt_text):
         stream=True,
         top_p=0.8
     )
+    last_length = 0
     for response in response_generator:
         if "text" in response.output:
-            yield json.dumps({"text": response.output["text"]}).encode('utf-8') + b'\n'
+            current_message = response.output["text"]
+            new_message = current_message[last_length:]
+            last_length = len(current_message)
+            yield json.dumps({"text": new_message}).encode('utf-8') + b'\n'
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
