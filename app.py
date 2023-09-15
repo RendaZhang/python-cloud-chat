@@ -3,7 +3,7 @@ from dashscope import Generation
 
 app = Flask(__name__)
 
-@app.route('/cloudchat/chat', methods=['POST'])
+@app.route('/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     user_message = data['message']
