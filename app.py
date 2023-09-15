@@ -20,12 +20,17 @@ def generate_response(prompt_text):
         stream=True,
         top_p=0.8
     )
-    last_length = 0
+    last_output_tokens = 0
     for response in response_generator:
-        if "text" in response.output:
+        if "text" in response.output and "output_tokens" in response.usage:
+            current_output_tokens = response.usage["output_tokens"]
             current_message = response.output["text"]
-            new_message = current_message[last_length:]
-            last_length = len(current_message)
+            
+            # Calculate the start position of the new message chunk
+            start_pos = len(current_message) - (current_output_tokens - last_output_tokens)
+            new_message = current_message[start_pos:]
+            
+            last_output_tokens = current_output_tokens
             yield json.dumps({"text": new_message}).encode('utf-8') + b'\n'
 
 if __name__ == '__main__':
