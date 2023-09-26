@@ -1,9 +1,25 @@
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response
-from dashscope import Generation
+from dashscope import Generation, ImageSynthesis
+from http import HTTPStatus
 import time
 import json
 
 app = Flask(__name__)
+
+@app.route('/generate_image', methods=['POST'])
+def generate_image():
+    prompt = request.json.get('prompt')
+    
+    if not prompt:
+        return jsonify({'error': 'Prompt is required'}), 400
+    
+    rsp = ImageSynthesis.call(model='stable-diffusion-v1.5', prompt=prompt, size='512*512')
+    
+    if rsp.status_code == HTTPStatus.OK:
+        image_urls = [result['url'] for result in rsp.output['results']]
+        return jsonify({'image_urls': image_urls})
+    else:
+        return jsonify({'error': 'Failed to generate image'}), 500
 
 @app.route('/chat', methods=['POST'])
 def chat():
