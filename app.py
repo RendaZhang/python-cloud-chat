@@ -1,10 +1,36 @@
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response
 from dashscope import Generation, ImageSynthesis
+import dashscope
 from http import HTTPStatus
+from urllib import request as urllib_request
 import time
 import json
 
 app = Flask(__name__)
+
+@app.route('/transcribe_audio', methods=['POST'])
+def transcribe_audio():
+    audio_file = request.files.get('audio')
+    if not audio_file:
+        return jsonify({'error': 'Audio file is required'}), 400
+    
+    # Save the uploaded audio file temporarily and get its path
+    file_path = "temp_audio_file"
+    audio_file.save(file_path)
+    
+    # Call the dashscope API
+    task_response = dashscope.audio.asr.Transcription.async_call(
+        model='paraformer-v1',
+        file_urls=[file_path]
+    )
+    
+    transcription_response = dashscope.audio.asr.Transcription.wait(task_response.output.task_id)
+    transcription_url = transcription_response.output['results'][0]['transcription_url']
+    transcription_results = json.loads(urllib_request.urlopen(transcription_url).read().decode('utf8'))
+    
+    # Extract the transcription text and return it as JSON
+    transcription_text = " ".join(sentence['text'] for sentence in transcription_results['transcripts'][0]['sentences'])
+    return jsonify({'transcription': transcription_text})
 
 @app.route('/generate_image', methods=['POST'])
 def generate_image():
