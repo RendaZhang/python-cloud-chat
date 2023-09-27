@@ -7,6 +7,7 @@ import time
 import json
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB
 
 @app.route('/transcribe_audio', methods=['POST'])
 def transcribe_audio():
