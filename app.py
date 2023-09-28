@@ -13,17 +13,22 @@ def transcribe_audio():
     audio_file = request.files.get('audio_file')
     
     if audio_file:
-        # Save the uploaded file temporarily or send it directly to the transcription service
-        file_path = os.path.join('temp', audio_file.filename)
+        temp_dir = 'temp'
+        # Check if the temp directory exists, if not create it
+        if not os.path.exists(temp_dir):
+            os.makedirs(temp_dir)
+        
+        # Save the uploaded file temporarily
+        file_path = os.path.join(temp_dir, audio_file.filename)
         audio_file.save(file_path)
 
         # Call the transcription service and get the result
-        task_response = dashscope.audio.asr.Transcription.async_call(
+        task_response = audio.asr.Transcription.async_call(
             model='paraformer-v1',
             file_urls=[file_path]
         )
 
-        transcription_response = dashscope.audio.asr.Transcription.wait(task_response.output.task_id)
+        transcription_response = audio.asr.Transcription.wait(task_response.output.task_id)
 
         transcription_url = transcription_response.output['results'][0]['transcription_url']
         transcription_results = json.loads(urllib_request.urlopen(transcription_url).read().decode('utf8'))
