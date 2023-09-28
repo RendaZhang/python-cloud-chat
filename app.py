@@ -30,15 +30,15 @@ def transcribe_audio():
 
         transcription_response = audio.asr.Transcription.wait(task_response.output.task_id)
 
-        transcription_url = transcription_response.output['results'][0]['transcription_url']
-        transcription_results = json.loads(urllib_request.urlopen(transcription_url).read().decode('utf8'))
+        #transcription_url = transcription_response.output['results'][0]['transcription_url']
+        #transcription_results = json.loads(urllib_request.urlopen(transcription_url).read().decode('utf8'))
 
-        transcriptions = [sentence['text'] for sentence in transcription_results['transcripts'][0]['sentences']]
+        #transcriptions = [sentence['text'] for sentence in transcription_results['transcripts'][0]['sentences']]
 
         # Delete the temporary file
         os.remove(file_path)
 
-        return jsonify({'transcriptions': transcriptions})
+        return jsonify({'transcriptions': transcription_response})
     else:
         return jsonify({'error': 'No audio file uploaded'}), 400
 
