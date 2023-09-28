@@ -1,12 +1,30 @@
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response
-from dashscope import Generation, ImageSynthesis
-import dashscope
+from dashscope import Generation, ImageSynthesis, audio
 from http import HTTPStatus
-from urllib import request as urllib_request
 import time
 import json
+from urllib import request as urllib_request
 
 app = Flask(__name__)
+
+@app.route('/transcribe_audio', methods=['POST'])
+def transcribe_audio():
+    audio_url = request.json.get('audio_url')
+    
+    if not audio_url:
+        return jsonify({'error': 'Audio URL is required'}), 400
+    
+    task_response = audio.asr.Transcription.async_call(
+        model='paraformer-v1',
+        file_urls=[audio_url]
+    )
+    
+    transcription_response = audio.asr.Transcription.wait(task_response.output.task_id)
+    transcription_url = transcription_response.output['results'][0]['transcription_url']
+    transcription_results = json.loads(urllib_request.urlopen(transcription_url).read().decode('utf8'))
+    
+    sentences = [sentence['text'] for sentence in transcription_results['transcripts'][0]['sentences']]
+    return jsonify({'transcriptions': sentences})
 
 @app.route('/generate_image', methods=['POST'])
 def generate_image():
