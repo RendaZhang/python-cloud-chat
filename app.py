@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, stream_with_context, Response
+from flask import Flask, request, jsonify, render_template, stream_with_context, Response, send_from_directory
 from dashscope import Generation, ImageSynthesis, audio
 import os
 from http import HTTPStatus
@@ -11,7 +11,7 @@ app = Flask(__name__)
 # Define a route to serve the audio files temporarily
 @app.route('/temp/<filename>')
 def serve_temp_file(filename):
-    return flask.send_from_directory('temp', filename)
+    return send_from_directory('temp', filename)
 
 @app.route('/transcribe_audio', methods=['POST'])
 def transcribe_audio():
