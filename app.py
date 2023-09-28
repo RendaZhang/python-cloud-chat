@@ -8,6 +8,11 @@ from urllib import request as urllib_request
 
 app = Flask(__name__)
 
+# Define a route to serve the audio files temporarily
+@app.route('/temp/<filename>')
+def serve_temp_file(filename):
+    return flask.send_from_directory('temp', filename)
+
 @app.route('/transcribe_audio', methods=['POST'])
 def transcribe_audio():
     audio_file = request.files.get('audio_file')
@@ -22,10 +27,13 @@ def transcribe_audio():
         file_path = os.path.join(temp_dir, audio_file.filename)
         audio_file.save(file_path)
 
+        # Construct a publicly accessible URL for the uploaded file
+        file_url = flask.url_for('serve_temp_file', filename=audio_file.filename, _external=True)
+
         # Call the transcription service and get the result
         task_response = audio.asr.Transcription.async_call(
             model='paraformer-v1',
-            file_urls=[file_path]
+            file_urls=[file_url]  # Use the public URL
         )
 
         transcription_response = audio.asr.Transcription.wait(task_response.output.task_id)
