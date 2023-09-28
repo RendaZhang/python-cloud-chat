@@ -17,7 +17,7 @@ class Callback(RecognitionCallback):
 
     def on_event(self, result: RecognitionResult) -> None:
         sentence = result.get_sentence()
-        self.transcriptions.append(sentence['text'])
+        self.transcriptions.append(result)
 
 @app.route('/transcribe_audio', methods=['POST'])
 def transcribe_audio():
@@ -38,7 +38,7 @@ def transcribe_audio():
         # For this example, we are assuming the recognition stops when the audio data ends
 
         # Return the transcriptions received so far
-        return jsonify({'transcriptions': callback})
+        return jsonify({'transcriptions': callback.transcriptions})
 
     else:
         return jsonify({'error': 'No audio data received'}), 400
