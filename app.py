@@ -9,22 +9,32 @@ app = Flask(__name__)
 
 @app.route('/transcribe_audio', methods=['POST'])
 def transcribe_audio():
-    audio_url = request.json.get('audio_url')
+    audio_file = request.files.get('audio_file')
     
-    if not audio_url:
-        return jsonify({'error': 'Audio URL is required'}), 400
-    
-    task_response = audio.asr.Transcription.async_call(
-        model='paraformer-v1',
-        file_urls=[audio_url]
-    )
-    
-    transcription_response = audio.asr.Transcription.wait(task_response.output.task_id)
-    transcription_url = transcription_response.output['results'][0]['transcription_url']
-    transcription_results = json.loads(urllib_request.urlopen(transcription_url).read().decode('utf8'))
-    
-    sentences = [sentence['text'] for sentence in transcription_results['transcripts'][0]['sentences']]
-    return jsonify({'transcriptions': sentences})
+    if audio_file:
+        # Save the uploaded file temporarily or send it directly to the transcription service
+        file_path = os.path.join('temp', audio_file.filename)
+        audio_file.save(file_path)
+
+        # Call the transcription service and get the result
+        task_response = dashscope.audio.asr.Transcription.async_call(
+            model='paraformer-v1',
+            file_urls=[file_path]
+        )
+
+        transcription_response = dashscope.audio.asr.Transcription.wait(task_response.output.task_id)
+
+        transcription_url = transcription_response.output['results'][0]['transcription_url']
+        transcription_results = json.loads(urllib_request.urlopen(transcription_url).read().decode('utf8'))
+
+        transcriptions = [sentence['text'] for sentence in transcription_results['transcripts'][0]['sentences']]
+
+        # Delete the temporary file
+        os.remove(file_path)
+
+        return jsonify({'transcriptions': transcriptions})
+    else:
+        return jsonify({'error': 'No audio file uploaded'}), 400
 
 @app.route('/generate_image', methods=['POST'])
 def generate_image():
