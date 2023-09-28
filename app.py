@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response, send_from_directory, url_for
-from dashscope import Generation, ImageSynthesis, audio
-import os
+from dashscope import Generation, ImageSynthesis
+import dashscope
+from dashscope.audio.asr import Recognition, RecognitionCallback, RecognitionResult
+import io
+import threading
 from http import HTTPStatus
 import time
 import json
@@ -8,47 +11,37 @@ from urllib import request as urllib_request
 
 app = Flask(__name__)
 
-# Define a route to serve the audio files temporarily
-@app.route('/temp/<filename>', methods=['GET'])
-def serve_temp_file(filename):
-    return send_from_directory('temp', filename)
+class Callback(RecognitionCallback):
+    def __init__(self):
+        self.transcriptions = []
+
+    def on_event(self, result: RecognitionResult) -> None:
+        sentence = result.get_sentence()
+        self.transcriptions.append(sentence['text'])
 
 @app.route('/transcribe_audio', methods=['POST'])
 def transcribe_audio():
-    audio_file = request.files.get('audio_file')
+    audio_file = request.files.get('audio_data')
     
     if audio_file:
-        temp_dir = 'temp'
-        # Check if the temp directory exists, if not create it
-        if not os.path.exists(temp_dir):
-            os.makedirs(temp_dir)
-        
-        # Save the uploaded file temporarily
-        file_path = os.path.join(temp_dir, audio_file.filename)
-        audio_file.save(file_path)
+        audio_data = io.BytesIO(audio_file.read())
+        callback = Callback()
+        recognition = Recognition(model='paraformer-realtime-v1',
+                                  format='pcm',
+                                  sample_rate=16000,
+                                  callback=callback)
 
-        # Construct a publicly accessible URL for the uploaded file
-        file_url = "https://rendazhang.com/cloudchat/" + file_path
+        # Start recognition in a separate thread to avoid blocking
+        threading.Thread(target=lambda: recognition.start(audio_data)).start()
 
-        # Call the transcription service and get the result
-        task_response = audio.asr.Transcription.async_call(
-            model='paraformer-v1',
-            file_urls=[file_url]  # Use the public URL
-        )
+        # In a real application, you would need to handle stopping the recognition and cleaning up resources
+        # For this example, we are assuming the recognition stops when the audio data ends
 
-        transcription_response = audio.asr.Transcription.wait(task_response.output.task_id)
+        # Return the transcriptions received so far
+        return jsonify({'transcriptions': callback.transcriptions})
 
-        #transcription_url = transcription_response.output['results'][0]['transcription_url']
-        #transcription_results = json.loads(urllib_request.urlopen(transcription_url).read().decode('utf8'))
-
-        #transcriptions = [sentence['text'] for sentence in transcription_results['transcripts'][0]['sentences']]
-
-        # Delete the temporary file
-        os.remove(file_path)
-
-        return jsonify({'transcriptions': transcription_response})
     else:
-        return jsonify({'error': 'No audio file uploaded'}), 400
+        return jsonify({'error': 'No audio data received'}), 400
 
 @app.route('/generate_image', methods=['POST'])
 def generate_image():
