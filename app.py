@@ -28,7 +28,7 @@ def transcribe_audio():
         audio_file.save(file_path)
 
         # Construct a publicly accessible URL for the uploaded file
-        file_url = url_for('serve_temp_file', filename=audio_file.filename, _external=True)
+        file_url = "https://rendazhang.com/cloudchat/" + file_path
 
         # Call the transcription service and get the result
         task_response = audio.asr.Transcription.async_call(
