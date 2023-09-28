@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, stream_with_context, Response, send_from_directory
+from flask import Flask, request, jsonify, render_template, stream_with_context, Response, send_from_directory, url_for
 from dashscope import Generation, ImageSynthesis, audio
 import os
 from http import HTTPStatus
@@ -28,7 +28,7 @@ def transcribe_audio():
         audio_file.save(file_path)
 
         # Construct a publicly accessible URL for the uploaded file
-        file_url = flask.url_for('serve_temp_file', filename=audio_file.filename, _external=True)
+        file_url = url_for('serve_temp_file', filename=audio_file.filename, _external=True)
 
         # Call the transcription service and get the result
         task_response = audio.asr.Transcription.async_call(
