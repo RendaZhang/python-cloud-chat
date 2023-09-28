@@ -9,7 +9,7 @@ from urllib import request as urllib_request
 app = Flask(__name__)
 
 # Define a route to serve the audio files temporarily
-@app.route('/temp/<filename>')
+@app.route('/temp/<filename>', methods=['GET'])
 def serve_temp_file(filename):
     return send_from_directory('temp', filename)
 
