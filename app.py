@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, render_template, stream_with_context, Response
 from dashscope import Generation, ImageSynthesis, audio
+import os
 from http import HTTPStatus
 import time
 import json
