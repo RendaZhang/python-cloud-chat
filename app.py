@@ -11,38 +11,6 @@ from urllib import request as urllib_request
 
 app = Flask(__name__)
 
-class Callback(RecognitionCallback):
-    def __init__(self):
-        self.transcriptions = []
-
-    def on_event(self, result: RecognitionResult) -> None:
-        sentence = result.get_sentence()
-        self.transcriptions.append(result)
-
-@app.route('/transcribe_audio', methods=['POST'])
-def transcribe_audio():
-    audio_data = request.files.get('audio_data')
-    
-    if audio_data:
-        audio_stream = io.BytesIO(audio_data.read())
-        callback = Callback()
-        recognition = Recognition(model='paraformer-realtime-v1',
-                                  format='pcm',
-                                  sample_rate=16000,
-                                  callback=callback)
-
-        # Start recognition in a separate thread to avoid blocking
-        threading.Thread(target=lambda: recognition.start(audio_stream)).start()
-
-        # In a real application, you would need to handle stopping the recognition and cleaning up resources
-        # For this example, we are assuming the recognition stops when the audio data ends
-
-        # Return the transcriptions received so far
-        return jsonify({'transcriptions': callback.transcriptions})
-
-    else:
-        return jsonify({'error': 'No audio data received'}), 400
-
 @app.route('/generate_image', methods=['POST'])
 def generate_image():
     prompt = request.json.get('prompt')
