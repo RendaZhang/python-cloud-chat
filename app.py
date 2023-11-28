@@ -8,6 +8,11 @@ from http import HTTPStatus
 import time
 import json
 from urllib import request as urllib_request
+import openai
+import os
+
+# Set OpenAI API key
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = Flask(__name__)
 
@@ -49,6 +54,27 @@ def generate_response(prompt_text):
             new_message = current_message[last_length:]
             last_length = len(current_message)
             yield json.dumps({"text": new_message}).encode('utf-8') + b'\n'
+
+@app.route('/gpt_chat', methods=['POST'])
+def gpt_chat():
+    content = request.json
+    user_message = content.get('message')
+
+    response_json = gpt_generate_response(user_message)
+
+    return Response(stream_with_context(response_json), content_type='application/json')
+
+def gpt_generate_response(prompt_text):
+    try:
+        response = openai.Completion.create(
+            engine="text-davinci-004",  # Using GPT-4 model
+            prompt=prompt_text,
+            max_tokens=150  # Adjust the number of tokens as needed
+        )
+        text = response.choices[0].text.strip()
+        yield json.dumps({"text": text}).encode('utf-8') + b'\n'
+    except Exception as e:
+        yield json.dumps({"error": str(e)}).encode('utf-8') + b'\n'
 
 # Simulated Generator (for testing purposes)
 def simulated_generator():
