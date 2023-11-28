@@ -67,7 +67,7 @@ def gpt_chat():
 def gpt_generate_response(prompt_text):
     try:
         response = openai.Completion.create(
-            engine="text-davinci-004",  # Using GPT-4 model
+            engine="gpt-4",  # Using GPT-4 model
             prompt=prompt_text,
             max_tokens=150  # Adjust the number of tokens as needed
         )
