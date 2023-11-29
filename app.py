@@ -67,14 +67,13 @@ def gpt_chat():
 def gpt_generate_response(user_input):
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo-1106",  # Adjust model as needed
-            response_format={ "type": "json_object" },
+            model="gpt-3.5-turbo-1106",  # Adjust the model as needed
             messages=[
-                {"role": "system", "content": "You are a helpful assistant designed to output JSON."},
+                {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": user_input}
             ]
         )
-        assistant_reply = response.choices[0].message.content
+        assistant_reply = response['choices'][0]['message']['content']
         yield json.dumps({"text": assistant_reply}).encode('utf-8') + b'\n'
     except Exception as e:
         yield json.dumps({"error": str(e)}).encode('utf-8') + b'\n'
