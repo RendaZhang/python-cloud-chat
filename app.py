@@ -58,20 +58,17 @@ def generate_response(prompt_text):
 @app.route('/gpt_chat', methods=['POST'])
 def gpt_chat():
     content = request.json
-    user_message = content.get('message')
+    conversation = content.get('conversation')  # Expect an array of message objects
 
-    response_json = gpt_generate_response(user_message)
+    response_json = gpt_generate_response(conversation)
 
     return Response(stream_with_context(response_json), content_type='application/json')
 
-def gpt_generate_response(user_input):
+def gpt_generate_response(conversation):
     try:
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo-1106",  # Adjust the model as needed
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": user_input}
-            ]
+            model="gpt-3.5-turbo-1106",
+            messages=conversation
         )
         assistant_reply = response.choices[0].message.content
         yield json.dumps({"text": assistant_reply}).encode('utf-8') + b'\n'
