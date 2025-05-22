@@ -42,7 +42,7 @@ def chat():
 
 def generate_response(prompt_text):
     response_generator = Generation.call(
-        model='qwen-turbo',
+        model='qwen-turbo-2025-04-28',
         prompt=prompt_text,
         stream=True,
         top_p=0.8
@@ -55,7 +55,7 @@ def generate_response(prompt_text):
             last_length = len(current_message)
             yield json.dumps({"text": new_message}).encode('utf-8') + b'\n'
 
-@app.route('/gpt_chat', methods=['POST'])
+#@app.route('/gpt_chat', methods=['POST'])
 def gpt_chat():
     content = request.json
     conversation = content.get('conversation')  # Expect an array of message objects
