@@ -3,3 +3,5 @@ Werkzeug<2.1.0
 dashscope
 requests==2.26.0
 openai
+gunicorn
+gevent
