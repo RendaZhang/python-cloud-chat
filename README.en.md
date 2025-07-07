@@ -1,3 +1,4 @@
+Last Updated Time: 2025-07-07 09:33 UTC | Author: 张人大 Renda Zhang
 # 🌩️ Python Cloud Chat · AI Chat & Image Generation Backend
 
 ## 📝 Project Overview
@@ -8,6 +9,7 @@
 - 🖼️ Text-to-image generation using `stable-diffusion-v1.5`
 - ⚙️ Easy environment variable configuration for API keys
 - 🌍 Compatible with macOS / Windows / Linux development environments
+- 🌐 Able to integrate with front-end pages or third-party apps
 
 ---
 
@@ -27,7 +29,7 @@
 
 ### 1. Clone the project
 ```bash
-git clone https://gitee.com/your-repo/python-cloud-chat.git
+git clone https://gitee.com/RendaZhang/python-cloud-chat.git
 cd python-cloud-chat
 ````
 
@@ -83,6 +85,48 @@ Server will run at:
 http://127.0.0.1:8080
 ```
 
+### Deployment & Testing on CentOS 7
+The following example uses an Alibaba Cloud lightweight server in Hong Kong (CentOS 7, 2 vCPUs, 1 GB RAM, 40 GB SSD) to demonstrate creating a virtual environment and managing the service with systemd.
+
+```bash
+mkdir /opt/cloudchat
+cd /opt/cloudchat
+# Create Python virtual environment
+virtualenv -p /root/.pyenv/versions/3.9.7/bin/python venv
+# Activate the virtual environment
+source venv/bin/activate
+# Install dependencies
+pip install -r requirements.txt
+# Deactivate the environment
+deactivate
+
+# Create a systemd service file
+sudo nano /etc/systemd/system/cloudchat.service
+# Reload configuration and start
+sudo systemctl daemon-reload
+sudo systemctl start cloudchat
+sudo systemctl enable cloudchat
+sudo systemctl daemon-reload
+sudo systemctl restart cloudchat
+sudo systemctl status cloudchat
+
+# Quick test with curl
+curl -X POST localhost:8080/chat \
+     -H "Content-Type: application/json" \
+     -H "Referer: https://rendazhang.com" \
+     -d '{"message": "Hello from curl!"}'
+```
+Example output:
+```json
+{"text": "Hello"}
+{"text": "!"}
+{"text": " It"}
+{"text": "'s"}
+{"text": " great to hear from"}
+{"text": " you. How can"}
+{"text": " I assist you today"}
+{"text": "? \ud83d\ude0a"}
+```
 ---
 
 ## 📡 API Endpoints
