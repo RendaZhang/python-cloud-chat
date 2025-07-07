@@ -1,3 +1,14 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [API 文档](#api-%E6%96%87%E6%A1%A3)
+  - [POST `/chat`](#post-chat)
+  - [POST `/deepseek_chat`](#post-deepseek_chat)
+  - [POST `/generate_image`](#post-generate_image)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # API 文档
 
 本文档描述了本服务提供的三个 HTTP 接口的请求与返回格式。
