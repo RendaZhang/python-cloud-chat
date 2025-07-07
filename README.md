@@ -1,3 +1,35 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [🌩️ Python Cloud Chat · 云端 AI 聊天与图像生成服务](#-python-cloud-chat-%C2%B7-%E4%BA%91%E7%AB%AF-ai-%E8%81%8A%E5%A4%A9%E4%B8%8E%E5%9B%BE%E5%83%8F%E7%94%9F%E6%88%90%E6%9C%8D%E5%8A%A1)
+  - [📝 项目简介](#-%E9%A1%B9%E7%9B%AE%E7%AE%80%E4%BB%8B)
+  - [🧱 项目结构与技术栈](#-%E9%A1%B9%E7%9B%AE%E7%BB%93%E6%9E%84%E4%B8%8E%E6%8A%80%E6%9C%AF%E6%A0%88)
+  - [📦 安装指南](#-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97)
+    - [1. 克隆项目](#1-%E5%85%8B%E9%9A%86%E9%A1%B9%E7%9B%AE)
+    - [2. 创建并激活虚拟环境（推荐）](#2-%E5%88%9B%E5%BB%BA%E5%B9%B6%E6%BF%80%E6%B4%BB%E8%99%9A%E6%8B%9F%E7%8E%AF%E5%A2%83%E6%8E%A8%E8%8D%90)
+      - [macOS/Linux:](#macoslinux)
+      - [Windows PowerShell:](#windows-powershell)
+    - [3. 安装依赖](#3-%E5%AE%89%E8%A3%85%E4%BE%9D%E8%B5%96)
+    - [4. 设置 DashScope API 密钥（推荐使用环境变量）](#4-%E8%AE%BE%E7%BD%AE-dashscope-api-%E5%AF%86%E9%92%A5%E6%8E%A8%E8%8D%90%E4%BD%BF%E7%94%A8%E7%8E%AF%E5%A2%83%E5%8F%98%E9%87%8F)
+      - [macOS/Linux:](#macoslinux-1)
+      - [Windows PowerShell:](#windows-powershell-1)
+  - [🚀 启动服务](#-%E5%90%AF%E5%8A%A8%E6%9C%8D%E5%8A%A1)
+  - [在 CentOS 7 部署与测试（示例）](#%E5%9C%A8-centos-7-%E9%83%A8%E7%BD%B2%E4%B8%8E%E6%B5%8B%E8%AF%95%E7%A4%BA%E4%BE%8B)
+  - [📡 接口说明](#-%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E)
+    - [🔹 POST `/chat`](#-post-chat)
+      - [请求：](#%E8%AF%B7%E6%B1%82)
+      - [返回（分段 JSON 流）：](#%E8%BF%94%E5%9B%9E%E5%88%86%E6%AE%B5-json-%E6%B5%81)
+    - [🔹 POST `/generate_image`](#-post-generate_image)
+      - [请求：](#%E8%AF%B7%E6%B1%82-1)
+      - [返回：](#%E8%BF%94%E5%9B%9E)
+  - [📁 文件说明](#-%E6%96%87%E4%BB%B6%E8%AF%B4%E6%98%8E)
+  - [🙌 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
+  - [🔐 License](#-license)
+  - [📬 联系方式](#-%E8%81%94%E7%B3%BB%E6%96%B9%E5%BC%8F)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # 🌩️ Python Cloud Chat · 云端 AI 聊天与图像生成服务
 
 * **Last Updated:** July 7, 2025, 17:50 (UTC+8)

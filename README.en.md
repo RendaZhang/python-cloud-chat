@@ -1,3 +1,31 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [🌩️ Python Cloud Chat · AI Chat & Image Generation Backend](#-python-cloud-chat-%C2%B7-ai-chat--image-generation-backend)
+  - [📝 Project Overview](#-project-overview)
+  - [🧱 Tech Stack](#-tech-stack)
+  - [📦 Installation](#-installation)
+    - [1. Clone the project](#1-clone-the-project)
+    - [2. Create & activate a virtual environment](#2-create--activate-a-virtual-environment)
+      - [macOS/Linux:](#macoslinux)
+      - [Windows PowerShell:](#windows-powershell)
+    - [3. Install dependencies](#3-install-dependencies)
+    - [4. Set your DashScope API Key](#4-set-your-dashscope-api-key)
+      - [macOS/Linux:](#macoslinux-1)
+      - [Windows PowerShell:](#windows-powershell-1)
+  - [🚀 Run the App](#-run-the-app)
+  - [Deployment & Testing on CentOS 7](#deployment--testing-on-centos-7)
+  - [📡 API Endpoints](#-api-endpoints)
+    - [🔹 POST `/chat`](#-post-chat)
+    - [🔹 POST `/generate_image`](#-post-generate_image)
+  - [📁 Project Structure](#-project-structure)
+  - [🙌 Contributing](#-contributing)
+  - [🔐 License](#-license)
+  - [📬 Contact](#-contact)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # 🌩️ Python Cloud Chat · AI Chat & Image Generation Backend
 
 * **Last Updated:** July 7, 2025, 17:50 (UTC+8)
