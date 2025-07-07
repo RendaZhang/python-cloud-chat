@@ -1,8 +1,10 @@
 """Flask web service for Qwen chat and Stable Diffusion image generation."""
 
 import json
+import os
 from http import HTTPStatus
 
+import openai
 from dashscope import Generation, ImageSynthesis
 from flask import Flask, Response, jsonify, request, stream_with_context
 
@@ -59,6 +61,38 @@ def generate_response(prompt_text):
             last_length = len(current_message)
             # Yield only the newly generated portion as a JSON line
             yield json.dumps({"text": new_message}).encode("utf-8") + b"\n"
+
+
+@app.route("/deepseek_chat", methods=["POST"])
+def deepseek_chat():
+    """Stream chat using DeepSeek model."""
+
+    content = request.json
+    user_message = content.get("message")
+
+    if not user_message:
+        return jsonify({"error": "Message is required"}), 400
+
+    response_gen = generate_deepseek_response(user_message)
+    return Response(stream_with_context(response_gen), content_type="application/json")
+
+
+def generate_deepseek_response(prompt_text):
+    """Generator yielding DeepSeek chat response."""
+
+    client = openai.OpenAI(
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
+        base_url="https://api.deepseek.com/v1",
+    )
+    stream = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "user", "content": prompt_text}],
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield json.dumps({"text": delta}).encode("utf-8") + b"\n"
 
 
 if __name__ == "__main__":
