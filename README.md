@@ -196,6 +196,8 @@ http://127.0.0.1:8080
 
 ## 📡 接口说明
 
+更多接口细节见 [docs/api.md](docs/api.md)
+
 ### 🔹 POST `/chat`
 
 AI 聊天接口（流式返回）
@@ -246,7 +248,6 @@ AI 聊天接口（流式返回）
 | `requirements.txt` | 依赖列表                    |
 | `.python-version`  | 指定 Python 版本（如使用 pyenv） |
 | `README.md`        | 中文说明文档                  |
-| `README.en.md`     | 英文说明文档（待优化）             |
 
 ---
 
