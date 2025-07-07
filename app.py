@@ -93,8 +93,3 @@ def generate_deepseek_response(prompt_text):
         delta = chunk.choices[0].delta.content
         if delta:
             yield json.dumps({"text": delta}).encode("utf-8") + b"\n"
-
-
-if __name__ == "__main__":
-    # Start development server
-    app.run(debug=True, port=8080)
