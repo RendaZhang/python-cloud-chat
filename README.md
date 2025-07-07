@@ -16,14 +16,8 @@
       - [Windows PowerShell:](#windows-powershell-1)
   - [🚀 启动服务](#-%E5%90%AF%E5%8A%A8%E6%9C%8D%E5%8A%A1)
   - [在 CentOS 7 部署与测试（示例）](#%E5%9C%A8-centos-7-%E9%83%A8%E7%BD%B2%E4%B8%8E%E6%B5%8B%E8%AF%95%E7%A4%BA%E4%BE%8B)
-  - [📡 接口说明](#-%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E)
-    - [🔹 POST `/chat`](#-post-chat)
-      - [请求：](#%E8%AF%B7%E6%B1%82)
-      - [返回（分段 JSON 流）：](#%E8%BF%94%E5%9B%9E%E5%88%86%E6%AE%B5-json-%E6%B5%81)
-    - [🔹 POST `/generate_image`](#-post-generate_image)
-      - [请求：](#%E8%AF%B7%E6%B1%82-1)
-      - [返回：](#%E8%BF%94%E5%9B%9E)
   - [📁 文件说明](#-%E6%96%87%E4%BB%B6%E8%AF%B4%E6%98%8E)
+  - [接口说明](#%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E)
   - [🙌 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
   - [🔐 License](#-license)
   - [📬 联系方式](#-%E8%81%94%E7%B3%BB%E6%96%B9%E5%BC%8F)
@@ -194,52 +188,6 @@ http://127.0.0.1:8080
 
 ---
 
-## 📡 接口说明
-
-更多接口细节见 [docs/api.md](docs/api.md)
-
-### 🔹 POST `/chat`
-
-AI 聊天接口（流式返回）
-
-#### 请求：
-
-```json
-{
-  "message": "你好，请介绍一下自己"
-}
-```
-
-#### 返回（分段 JSON 流）：
-
-```json
-{"text": "你好，我是..."}
-```
-
----
-
-### 🔹 POST `/generate_image`
-
-图像生成接口
-
-#### 请求：
-
-```json
-{
-  "prompt": "一只在阳光下打盹的橘猫"
-}
-```
-
-#### 返回：
-
-```json
-{
-  "image_urls": ["https://dashscope.aliyun.com/..."]
-}
-```
-
----
-
 ## 📁 文件说明
 
 | 文件名                | 功能描述                    |
@@ -248,6 +196,12 @@ AI 聊天接口（流式返回）
 | `requirements.txt` | 依赖列表                    |
 | `.python-version`  | 指定 Python 版本（如使用 pyenv） |
 | `README.md`        | 中文说明文档                  |
+
+---
+
+## 接口说明
+
+* 📡 [接口文档](docs/api.md)
 
 ---
 
@@ -272,7 +226,7 @@ AI 聊天接口（流式返回）
 
 ## 🔐 License
 
-仅供个人学习与展示使用，**请勿商用**。涉及 API Key 的部分请自行保管。
+本项目采用 **MIT 协议** 开源发布。这意味着你可以自由地使用、修改并重新发布本仓库的内容，只需在分发时附上原始许可证声明。
 
 ---
 
