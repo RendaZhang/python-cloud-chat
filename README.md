@@ -171,6 +171,15 @@ http://127.0.0.1:8080
    sudo systemctl daemon-reload
    sudo systemctl restart cloudchat
    ```
+   如果你希望限制 systemd 的日志的保留时间或大小，可以编辑 /etc/systemd/journald.conf 文件。例如：
+   ```bash
+   SystemMaxUse=100M  # 限制日志占用的最大磁盘空间为 100MB
+   MaxRetentionSec=7day  # 日志最多保留 7 天
+   ```
+   修改后，重启 journald 服务：
+   ```bash
+   sudo systemctl restart systemd-journald
+   ```
 5. **接口测试**
    ```bash
    curl -X POST localhost:8080/chat \
