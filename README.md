@@ -160,10 +160,11 @@ http://127.0.0.1:8080
    - `ExecStart` 使用虚拟环境中的 Python 启动应用。
 4. **启动并管理服务**
    ```bash
-   sudo systemctl daemon-reload     # 载入新服务
-   sudo systemctl start cloudchat   # 启动 CloudChat
-   sudo systemctl enable cloudchat  # 开机自启
-   sudo systemctl status cloudchat  # 查看运行状态
+   sudo systemctl daemon-reload        # 载入新服务
+   sudo systemctl start cloudchat      # 启动 CloudChat
+   sudo systemctl enable cloudchat     # 开机自启
+   sudo systemctl status cloudchat     # 查看运行状态
+   journalctl -u cloudchat.service -f  # 监控状态
    ```
    修改 service 文件或代码后，可运行：
    ```bash
