@@ -128,7 +128,7 @@ http://127.0.0.1:8080
    ```
 2. **创建虚拟环境并安装依赖**
    ```bash
-   virtualenv -p /root/.pyenv/versions/3.9.7/bin/python venv
+   python -m venv venv
    source venv/bin/activate
    pip install -r requirements.txt
    deactivate
