@@ -191,10 +191,20 @@ AI 聊天接口（流式返回）
 
 ## 🙌 贡献指南
 
-1. Fork 本仓库
-2. 新建分支 `feat_xxx`
-3. 提交代码并附带说明
-4. 提交 Pull Request，我们会尽快审核
+1. Fork 本仓库并克隆到本地
+2. 安装依赖及 **pre-commit**
+   ```bash
+   pip install -r requirements.txt
+   pip install -r requirements-dev.txt
+   pre-commit install
+   ```
+3. 新建分支 `feat_xxx` 开发并提交
+4. 提交前可手动运行：
+   ```bash
+   pre-commit run --all-files
+   ```
+5. 提交 Pull Request，我们会尽快审核
+   > ✅ 所有提交必须通过 pre-commit 检查
 
 ---
 
@@ -209,4 +219,3 @@ AI 聊天接口（流式返回）
 作者：张人大（Renda Zhang）
 邮箱：[952402967@qq.com](mailto:952402967@qq.com)
 个人网站：[https://rendazhang.com](https://rendazhang.com)
-

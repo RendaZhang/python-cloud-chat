@@ -189,10 +189,20 @@ AI-powered image generation endpoint
 
 ## 🙌 Contributing
 
-1. Fork this repo
-2. Create a new branch `feat_xyz`
-3. Commit your code with clear messages
-4. Submit a Pull Request for review
+1. Fork this repo and clone it locally
+2. Install dependencies and **pre-commit**
+   ```bash
+   pip install -r requirements.txt
+   pip install -r requirements-dev.txt
+   pre-commit install
+   ```
+3. Create a new branch `feat_xyz` for development
+4. Before committing, you can run:
+   ```bash
+   pre-commit run --all-files
+   ```
+5. Submit a Pull Request for review
+   > ✅ All commits must pass pre-commit checks
 
 ---
 
