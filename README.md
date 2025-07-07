@@ -2,7 +2,8 @@
 
 ## 📝 项目简介
 
-这是一个基于 Flask 的轻量级 Python Web 服务，整合了阿里云 DashScope API，实现了以下功能：
+这是一个基于 Flask 的轻量级 Python Web 服务，整合了阿里云 DashScope API，实现了以下功能。
+项目最初在 CentOS 7 系统的阿里云香港轻量级服务器（2 vCPUs、1 GB RAM、40 GB SSD）上部署并测试：
 
 - 🤖 与 AI 模型实时对话（流式输出）
 - 🖼️ 基于 Stable Diffusion 的 AI 图像生成
@@ -82,6 +83,49 @@ python app.py
 
 ```
 http://127.0.0.1:8080
+```
+
+### 在 CentOS 7 部署与测试
+以下示例基于阿里云香港的轻量级服务器（CentOS 7，2 vCPUs，1 GB RAM，40 GB SSD）展示如何创建虚拟环境并使用 systemd 管理服务。
+
+```bash
+mkdir /opt/cloudchat
+cd /opt/cloudchat
+# 创建 Python 虚拟环境
+virtualenv -p /root/.pyenv/versions/3.9.7/bin/python venv
+# 激活虚拟环境
+source venv/bin/activate
+# 安装依赖
+pip install -r requirements.txt
+# 退出虚拟环境
+deactivate
+
+# 新建 systemd 服务文件
+sudo nano /etc/systemd/system/cloudchat.service
+# 重新加载配置并启动
+sudo systemctl daemon-reload
+sudo systemctl start cloudchat
+sudo systemctl enable cloudchat
+sudo systemctl daemon-reload
+sudo systemctl restart cloudchat
+sudo systemctl status cloudchat
+
+# 使用 curl 简单测试
+curl -X POST localhost:8080/chat \
+     -H "Content-Type: application/json" \
+     -H "Referer: https://rendazhang.com" \
+     -d '{"message": "Hello from curl!"}'
+```
+示例输出：
+```json
+{"text": "Hello"}
+{"text": "!"}
+{"text": " It"}
+{"text": "'s"}
+{"text": " great to hear from"}
+{"text": " you. How can"}
+{"text": " I assist you today"}
+{"text": "? \ud83d\ude0a"}
 ```
 
 ---
