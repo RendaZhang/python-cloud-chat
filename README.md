@@ -88,48 +88,77 @@ python app.py
 http://127.0.0.1:8080
 ```
 
-### 在 CentOS 7 部署与测试
-以下示例基于阿里云香港的轻量级服务器（CentOS 7，2 vCPUs，1 GB RAM，40 GB SSD）展示如何创建虚拟环境并使用 systemd 管理服务。
+## 在 CentOS 7 部署与测试（示例）
 
-```bash
-mkdir /opt/cloudchat
-cd /opt/cloudchat
-# 创建 Python 虚拟环境
-virtualenv -p /root/.pyenv/versions/3.9.7/bin/python venv
-# 激活虚拟环境
-source venv/bin/activate
-# 安装依赖
-pip install -r requirements.txt
-# 退出虚拟环境
-deactivate
+以下步骤展示了在全新 CentOS 7 系统上部署 CloudChat，并通过 systemd 管理服务：
 
-# 新建 systemd 服务文件
-sudo nano /etc/systemd/system/cloudchat.service
-# 重新加载配置并启动
-sudo systemctl daemon-reload
-sudo systemctl start cloudchat
-sudo systemctl enable cloudchat
-sudo systemctl daemon-reload
-sudo systemctl restart cloudchat
-sudo systemctl status cloudchat
+1. **准备工作目录**
+   ```bash
+   mkdir -p /opt/cloudchat
+   cd /opt/cloudchat
+   # 将代码上传或 git clone 到此目录
+   ```
+2. **创建虚拟环境并安装依赖**
+   ```bash
+   virtualenv -p /root/.pyenv/versions/3.9.7/bin/python venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   deactivate
+   ```
+   - `virtualenv` 用于构建隔离环境；
+   - `source` 激活环境后安装依赖；
+   - `deactivate` 退出虚拟环境。
+3. **编写 systemd 服务文件**
+   在 `/etc/systemd/system/cloudchat.service` 中填写如下内容：
+   ```ini
+   [Unit]
+   Description=CloudChat Flask App
+   After=network.target
 
-# 使用 curl 简单测试
-curl -X POST localhost:8080/chat \
-     -H "Content-Type: application/json" \
-     -H "Referer: https://rendazhang.com" \
-     -d '{"message": "Hello from curl!"}'
-```
-示例输出：
-```json
-{"text": "Hello"}
-{"text": "!"}
-{"text": " It"}
-{"text": "'s"}
-{"text": " great to hear from"}
-{"text": " you. How can"}
-{"text": " I assist you today"}
-{"text": "? \ud83d\ude0a"}
-```
+   [Service]
+   User=root
+   WorkingDirectory=/opt/cloudchat
+   Environment="PATH=/opt/cloudchat/venv/bin"
+   Environment="DASHSCOPE_API_KEY=sk-******************"
+   Environment="OPENAI_API_KEY=sk-***********************"
+   ExecStart=/opt/cloudchat/venv/bin/python app.py
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   - `WorkingDirectory` 指向代码目录；
+   - `Environment` 中的密钥替换为实际值；
+   - `ExecStart` 使用虚拟环境中的 Python 启动应用。
+4. **启动并管理服务**
+   ```bash
+   sudo systemctl daemon-reload     # 载入新服务
+   sudo systemctl start cloudchat   # 启动 CloudChat
+   sudo systemctl enable cloudchat  # 开机自启
+   sudo systemctl status cloudchat  # 查看运行状态
+   ```
+   修改 service 文件或代码后，可运行：
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl restart cloudchat
+   ```
+5. **接口测试**
+   ```bash
+   curl -X POST localhost:8080/chat \
+        -H "Content-Type: application/json" \
+        -H "Referer: https://rendazhang.com" \
+        -d '{"message": "Hello from curl!"}'
+   ```
+   预期输出（分段）：
+   ```json
+   {"text": "Hello"}
+   {"text": "!"}
+   {"text": " It"}
+   {"text": "'s"}
+   {"text": " great to hear from"}
+   {"text": " you. How can"}
+   {"text": " I assist you today"}
+   {"text": "? \ud83d\ude0a"}
+   ```
 
 ---
 

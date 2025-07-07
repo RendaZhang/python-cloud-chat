@@ -87,48 +87,78 @@ Server will run at:
 http://127.0.0.1:8080
 ```
 
-### Deployment & Testing on CentOS 7
-The following example uses an Alibaba Cloud lightweight server in Hong Kong (CentOS 7, 2 vCPUs, 1 GB RAM, 40 GB SSD) to demonstrate creating a virtual environment and managing the service with systemd.
+## Deployment & Testing on CentOS 7
 
-```bash
-mkdir /opt/cloudchat
-cd /opt/cloudchat
-# Create Python virtual environment
-virtualenv -p /root/.pyenv/versions/3.9.7/bin/python venv
-# Activate the virtual environment
-source venv/bin/activate
-# Install dependencies
-pip install -r requirements.txt
-# Deactivate the environment
-deactivate
+The following steps illustrate how to deploy CloudChat on a fresh CentOS 7 system and manage it via systemd.
 
-# Create a systemd service file
-sudo nano /etc/systemd/system/cloudchat.service
-# Reload configuration and start
-sudo systemctl daemon-reload
-sudo systemctl start cloudchat
-sudo systemctl enable cloudchat
-sudo systemctl daemon-reload
-sudo systemctl restart cloudchat
-sudo systemctl status cloudchat
+1. **Prepare a working directory**
+   ```bash
+   mkdir -p /opt/cloudchat
+   cd /opt/cloudchat
+   # Upload your code or git clone the repo here
+   ```
+2. **Create a virtual environment and install dependencies**
+   ```bash
+   virtualenv -p /root/.pyenv/versions/3.9.7/bin/python venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   deactivate
+   ```
+   - `virtualenv` creates an isolated Python environment.
+   - `source` activates the venv so packages install inside it.
+   - `deactivate` exits the venv when done.
+3. **Create a systemd service file**
+   Write `/etc/systemd/system/cloudchat.service` with the following content:
+   ```ini
+   [Unit]
+   Description=CloudChat Flask App
+   After=network.target
 
-# Quick test with curl
-curl -X POST localhost:8080/chat \
-     -H "Content-Type: application/json" \
-     -H "Referer: https://rendazhang.com" \
-     -d '{"message": "Hello from curl!"}'
-```
-Example output:
-```json
-{"text": "Hello"}
-{"text": "!"}
-{"text": " It"}
-{"text": "'s"}
-{"text": " great to hear from"}
-{"text": " you. How can"}
-{"text": " I assist you today"}
-{"text": "? \ud83d\ude0a"}
-```
+   [Service]
+   User=root
+   WorkingDirectory=/opt/cloudchat
+   Environment="PATH=/opt/cloudchat/venv/bin"
+   Environment="DASHSCOPE_API_KEY=sk-******************"
+   Environment="OPENAI_API_KEY=sk-***********************"
+   ExecStart=/opt/cloudchat/venv/bin/python app.py
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   - `WorkingDirectory` points to where the code lives.
+   - Replace the API keys in `Environment` with your own values.
+   - `ExecStart` launches the app using the venv Python.
+4. **Start and manage the service**
+   ```bash
+   sudo systemctl daemon-reload     # Load new unit files
+   sudo systemctl start cloudchat   # Start CloudChat
+   sudo systemctl enable cloudchat  # Auto-start on boot
+   sudo systemctl status cloudchat  # Check current status
+   ```
+   If you modify the service or the code later, run:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl restart cloudchat
+   ```
+5. **Test the endpoint**
+   ```bash
+   curl -X POST localhost:8080/chat \
+        -H "Content-Type: application/json" \
+        -H "Referer: https://rendazhang.com" \
+        -d '{"message": "Hello from curl!"}'
+   ```
+   You should see chunked output similar to:
+   ```json
+   {"text": "Hello"}
+   {"text": "!"}
+   {"text": " It"}
+   {"text": "'s"}
+   {"text": " great to hear from"}
+   {"text": " you. How can"}
+   {"text": " I assist you today"}
+   {"text": "? \ud83d\ude0a"}
+   ```
+
 ---
 
 ## 📡 API Endpoints
