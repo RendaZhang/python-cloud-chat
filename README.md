@@ -113,7 +113,7 @@ python app.py
 运行后默认监听：
 
 ```
-http://127.0.0.1:8080
+http://127.0.0.1:5000
 ```
 
 ## 在 CentOS 7 部署与测试（示例）
@@ -182,7 +182,7 @@ http://127.0.0.1:8080
    ```
 5. **接口测试**
    ```bash
-   curl -X POST localhost:8080/chat \
+   curl -X POST localhost:5000/chat \
         -H "Content-Type: application/json" \
         -H "Referer: https://rendazhang.com" \
         -d '{"message": "Hello from curl!"}'

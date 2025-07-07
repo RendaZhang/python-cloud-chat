@@ -2,7 +2,7 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
-- [API 文档](#api-%E6%96%87%E6%A1%A3)
+- [API 文档](#api-文档)
   - [POST `/chat`](#post-chat)
   - [POST `/deepseek_chat`](#post-deepseek_chat)
   - [POST `/generate_image`](#post-generate_image)
@@ -34,7 +34,7 @@
 - **调用示例**：
 
 ```bash
-curl -X POST localhost:8080/chat \
+curl -X POST localhost:5000/chat \
      -H "Content-Type: application/json" \
      -H "Referer: https://rendazhang.com" \
      -d '{"message": "Hello from curl!"}'
@@ -74,7 +74,7 @@ curl -X POST localhost:8080/chat \
 - **调用示例**：
 
 ```bash
-curl -X POST localhost:8080/deepseek_chat \
+curl -X POST localhost:5000/deepseek_chat \
      -H "Content-Type: application/json" \
      -H "Referer: https://rendazhang.com" \
      -d '{"message": "你好，DeepSeek"}'
@@ -110,7 +110,7 @@ curl -X POST localhost:8080/deepseek_chat \
 - **调用示例**：
 
 ```bash
-curl -X POST localhost:8080/generate_image \
+curl -X POST localhost:5000/generate_image \
      -H "Content-Type: application/json" \
      -H "Referer: https://rendazhang.com" \
      -d '{"prompt": "一只在阳光下打盹的橘猫"}'
