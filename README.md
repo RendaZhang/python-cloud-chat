@@ -5,6 +5,7 @@
 - [🌩️ Python Cloud Chat · 云端 AI 聊天与图像生成服务](#️-python-cloud-chat--云端-ai-聊天与图像生成服务)
   - [📝 项目简介](#-项目简介)
   - [🧱 项目结构与技术栈](#-项目结构与技术栈)
+    - [Gunicorn + Gevent 的优势](#gunicorn--gevent-的优势)
   - [📦 安装指南](#-安装指南)
     - [1. 克隆项目](#1-克隆项目)
     - [2. 创建并激活虚拟环境（推荐）](#2-创建并激活虚拟环境推荐)
@@ -39,6 +40,7 @@
 - ✅ 支持 DashScope API Key 环境变量配置
 - 💻 支持 macOS / Windows / Linux 开发环境
 - 🌐 可与前端页面或第三方应用对接
+- 🚀 使用 Gunicorn + Gevent 部署，支持高并发流式响应
 
 ---
 
@@ -51,6 +53,16 @@
   - `requests` 用于网络请求
 - **图像生成模型**：stable-diffusion-v1.5
 - **聊天模型**：qwen-turbo-2025-04-28
+- **WSGI 服务器**：Gunicorn + Gevent
+
+---
+
+### Gunicorn + Gevent 的优势
+
+1. **并发处理能力**：协程模型使小内存服务器也能稳定处理流式请求。
+2. **资源效率**：相比多线程/多进程更节省内存，适合 1GB 内存机器。
+3. **稳定性**：Gunicorn 能自动管理工作进程并在崩溃后重启。
+4. **流式响应优化**：Gevent 优化长连接，避免客户端超时。
 
 ---
 
@@ -106,15 +118,13 @@ $env:DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
 
 ## 🚀 启动服务
 
+默认使用 **Gunicorn + Gevent** 作为 WSGI 服务器：
+
 ```bash
-python app.py
+gunicorn --worker-class gevent --workers 2 --bind 0.0.0.0:5000 app:app
 ```
 
-运行后默认监听：
-
-```
-http://127.0.0.1:5000
-```
+启动后在 `0.0.0.0:5000` 监听。
 
 ## 在 CentOS 7 部署与测试（示例）
 
@@ -140,7 +150,7 @@ http://127.0.0.1:5000
    在 `/etc/systemd/system/cloudchat.service` 中填写如下内容：
    ```ini
    [Unit]
-   Description=CloudChat Flask App
+   Description=CloudChat Flask App with Gunicorn
    After=network.target
 
    [Service]
@@ -150,14 +160,26 @@ http://127.0.0.1:5000
    Environment="DASHSCOPE_API_KEY=sk-******************"
    Environment="DEEPSEEK_API_KEY=sk-******************"
    Environment="OPENAI_API_KEY=sk-***********************"
-   ExecStart=/opt/cloudchat/venv/bin/python app.py
+   ExecStart=/opt/cloudchat/venv/bin/gunicorn \
+      --worker-class gevent \
+      --workers 2 \
+      --worker-connections 50 \
+      --max-requests 1000 \
+      --max-requests-jitter 50 \
+      --timeout 300 \
+      --bind 0.0.0.0:5000 app:app
+
+   Restart=always
+   RestartSec=3
+   KillSignal=SIGINT
 
    [Install]
    WantedBy=multi-user.target
    ```
-   - `WorkingDirectory` 指向代码目录；
-   - `Environment` 中的密钥替换为实际值；
-   - `ExecStart` 使用虚拟环境中的 Python 启动应用。
+  - `WorkingDirectory` 指向代码目录；
+  - `Environment` 中的密钥替换为实际值；
+  - `ExecStart` 使用 Gunicorn + Gevent 启动应用；
+  - `Restart` 相关配置保证服务异常后自动重启。
 4. **启动并管理服务**
    ```bash
    sudo systemctl daemon-reload        # 载入新服务
