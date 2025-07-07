@@ -1,5 +1,7 @@
-Last Updated Time: 2025-07-07 09:33 UTC | Author: 张人大 Renda Zhang
 # 🌩️ Python Cloud Chat · 云端 AI 聊天与图像生成服务
+
+更新时间: 2025-07-07 17:33 UTC
+作者: 张人大
 
 ## 📝 项目简介
 
