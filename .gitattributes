@@ -1,0 +1,49 @@
+# Normalize all text files to use LF line endings
+* text=auto eol=lf
+
+# Windows scripts should keep CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Explicit LF for Unix shells and Python code
+*.sh text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# Treat common binary formats as binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.mp3 binary
+*.mp4 binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.tgz binary
+*.bz2 binary
+*.7z binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+*.ttf binary
+*.otf binary
+*.so binary
+*.dll binary
+*.exe binary
+
+# Mark README files as documentation for GitHub Linguist
+README* linguist-documentation
+
+# Add LFS rules here if large assets are introduced in the future
+# Example:
+# *.psd filter=lfs diff=lfs merge=lfs -text
+
+# Generated with automation on 2025-07-07
