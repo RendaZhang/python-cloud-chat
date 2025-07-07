@@ -1,7 +1,7 @@
 # 🌩️ Python Cloud Chat · AI Chat & Image Generation Backend
 
-Last Updated Time: 2025-07-07 17:33 UTC
-Author: Renda Zhang
+* **Last Updated:** July 7, 2025, 17:50 (UTC+8)
+* **Author:** Renda Zhang
 
 ## 📝 Project Overview
 
