@@ -20,6 +20,28 @@
 {"text": "你好，我是..."}
 ```
 
+- **调用示例**：
+
+```bash
+curl -X POST localhost:8080/chat \
+     -H "Content-Type: application/json" \
+     -H "Referer: https://rendazhang.com" \
+     -d '{"message": "Hello from curl!"}'
+```
+
+- **预期输出（分段）**：
+
+```json
+{"text": "Hello"}
+{"text": "!"}
+{"text": " It"}
+{"text": "'s"}
+{"text": " great to hear from"}
+{"text": " you. How can"}
+{"text": " I assist you today"}
+{"text": "? \ud83d\ude0a"}
+```
+
 ## POST `/deepseek_chat`
 
 - **功能**：使用 DeepSeek Chat 模型进行流式对话。
@@ -36,6 +58,22 @@
 
 ```json
 {"text": "你好，我是 DeepSeek"}
+```
+
+- **调用示例**：
+
+```bash
+curl -X POST localhost:8080/deepseek_chat \
+     -H "Content-Type: application/json" \
+     -H "Referer: https://rendazhang.com" \
+     -d '{"message": "你好，DeepSeek"}'
+```
+
+- **预期输出（分段）**：
+
+```json
+{"text": "你好"}
+{"text": "，我是 DeepSeek"}
 ```
 
 ## POST `/generate_image`
@@ -56,4 +94,19 @@
 {
   "image_urls": ["https://dashscope.aliyun.com/..."]
 }
+```
+
+- **调用示例**：
+
+```bash
+curl -X POST localhost:8080/generate_image \
+     -H "Content-Type: application/json" \
+     -H "Referer: https://rendazhang.com" \
+     -d '{"prompt": "一只在阳光下打盹的橘猫"}'
+```
+
+- **预期输出**：
+
+```json
+{"image_urls": ["https://dashscope.aliyun.com/..."]}
 ```
