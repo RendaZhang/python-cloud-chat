@@ -47,6 +47,7 @@
 - 💻 支持 macOS / Windows / Linux 开发环境
 - 🌐 可与前端页面或第三方应用对接
 - 🚀 使用 Gunicorn + Gevent 部署，支持高并发流式响应
+- 🗄️ 使用 Redis 存储会话，DeepSeek 聊天接口支持多轮流式对话
 
 ---
 
@@ -108,15 +109,19 @@ pip install -r requirements.txt
 #### macOS/Linux:
 
 ```bash
-export DASHSCOPE_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
-export DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+export DASHSCOPE_API_KEY=your_dashscope_api_key
+export DEEPSEEK_API_KEY=your_deepseek_api_key
+export REDIS_PASSWORD=your_redis_pass
+export FLASK_SECRET_KEY=your_flask_secret_key
 ```
 
 #### Windows PowerShell:
 
 ```powershell
-$env:DASHSCOPE_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
-$env:DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+$env:DASHSCOPE_API_KEY="your_dashscope_api_key"
+$env:DEEPSEEK_API_KEY="your_deepseek_api_key"
+$env:REDIS_PASSWORD="your_redis_pass"
+$env:FLASK_SECRET_KEY="your_flask_secret_key"
 ```
 
 或直接添加到 `activate` 文件中。
@@ -171,9 +176,10 @@ After=network.target
 User=root
 WorkingDirectory=/opt/cloudchat
 Environment="PATH=/opt/cloudchat/venv/bin"
-Environment="DASHSCOPE_API_KEY=sk-******************"
-Environment="DEEPSEEK_API_KEY=sk-******************"
-Environment="OPENAI_API_KEY=sk-***********************"
+Environment="DASHSCOPE_API_KEY=*****************"
+Environment="DEEPSEEK_API_KEY=******************"
+Environment="OPENAI_API_KEY=********************"
+Environment="FLASK_SECRET_KEY=******************"
 # **注意**：如下 ExecStart 的命令的换行和注释只是为了方便展示，
 # * 使用的时候去掉命令包含的注释 和 换行符 和 '\'符号 以及 多余的空格
 ExecStart=/opt/cloudchat/venv/bin/gunicorn \
@@ -288,7 +294,7 @@ free -h
 
 | 文件名                | 功能描述                    |
 | ------------------ | ----------------------- |
-| `app.py`           | 主应用，定义两个接口（聊天 + 图像生成）   |
+| `app.py`           | 主应用，提供聊天、DeepSeek 多轮对话、图像生成等接口 |
 | `requirements.txt` | 依赖列表                    |
 | `.python-version`  | 指定 Python 版本（如使用 pyenv） |
 | `README.md`        | 中文说明文档                  |

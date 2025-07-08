@@ -7,6 +7,7 @@
   - [POST `/chat`](#post-chat)
   - [POST `/deepseek_chat`](#post-deepseek_chat)
   - [POST `/generate_image`](#post-generate_image)
+  - [POST `/reset_chat`](#post-reset_chat)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -67,7 +68,7 @@ curl -X POST localhost:5000/chat \
 
 ## POST `/deepseek_chat`
 
-- **功能**：使用 DeepSeek Chat 模型进行流式对话。
+- **功能**：使用 DeepSeek Chat 模型进行多轮流式对话，历史消息存储在 Redis 中。
 - **请求头**：`Content-Type: application/json`
 - **请求体示例**：
 
@@ -77,10 +78,11 @@ curl -X POST localhost:5000/chat \
 }
 ```
 
-- **返回**：服务器以分段 JSON 流形式返回回复文本，例如：
+- **返回**：服务器以分段 JSON 流形式连续返回回复文本：
 
 ```json
-{"text": "你好，我是 DeepSeek"}
+{"text": "你好"}
+{"text": "，我是 DeepSeek"}
 ```
 
 - **调用示例**：
@@ -92,12 +94,7 @@ curl -X POST localhost:5000/deepseek_chat \
      -d '{"message": "你好，DeepSeek"}'
 ```
 
-- **预期输出（分段）**：
-
-```json
-{"text": "你好"}
-{"text": "，我是 DeepSeek"}
-```
+- **说明**：会话默认保留最近 6 轮对话，如需清空历史可调用 [`/reset_chat`](#post-reset_chat)。
 
 ---
 
@@ -134,4 +131,22 @@ curl -X POST localhost:5000/generate_image \
 
 ```json
 {"image_urls": ["https://dashscope.aliyun.com/..."]}
+```
+
+---
+
+## POST `/reset_chat`
+
+- **功能**：清空当前用户会话中的对话历史。
+- **请求头**：`Content-Type: application/json`
+- **请求体示例**：空对象即可。
+
+```json
+{}
+```
+
+- **返回示例**：
+
+```json
+{"status": "对话历史已重置"}
 ```
