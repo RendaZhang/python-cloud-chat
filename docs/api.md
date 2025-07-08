@@ -3,6 +3,7 @@
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
 - [API 文档](#api-%E6%96%87%E6%A1%A3)
+  - [简介](#%E7%AE%80%E4%BB%8B)
   - [POST `/chat`](#post-chat)
   - [POST `/deepseek_chat`](#post-deepseek_chat)
   - [POST `/generate_image`](#post-generate_image)
@@ -11,7 +12,16 @@
 
 # API 文档
 
-本文档描述了本服务提供的三个 HTTP 接口的请求与返回格式。
+* **Last Updated:** July 8, 2025, 21:40 (UTC+8)
+* **作者:** 张人大（Renda Zhang）
+
+---
+
+## 简介
+
+本文档描述了本服务提供的接口的请求与返回格式。
+
+---
 
 ## POST `/chat`
 
@@ -53,6 +63,8 @@ curl -X POST localhost:5000/chat \
 {"text": "? \ud83d\ude0a"}
 ```
 
+---
+
 ## POST `/deepseek_chat`
 
 - **功能**：使用 DeepSeek Chat 模型进行流式对话。
@@ -86,6 +98,8 @@ curl -X POST localhost:5000/deepseek_chat \
 {"text": "你好"}
 {"text": "，我是 DeepSeek"}
 ```
+
+---
 
 ## POST `/generate_image`
 

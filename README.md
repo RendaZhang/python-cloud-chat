@@ -31,8 +31,10 @@
 
 # 🌩️ Python Cloud Chat · 云端 AI 聊天与图像生成服务
 
-* **Last Updated:** July 8, 2025, 21:20 (UTC+8)
+* **Last Updated:** July 8, 2025, 21:40 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
+
+---
 
 ## 📝 项目简介
 
@@ -293,11 +295,11 @@ free -h
 
 ### 📡 接口文档
 
-[docs/api.md](docs/api.md)
+[docs/api.md](docs/api.md): 主要描述了本服务提供的接口的请求与返回格式。
 
 ### 📘 Python 轻量级后端开发指南
 
-[docs/lightweight_backend_development.md](docs/lightweight_backend_development.md)
+[docs/lightweight_backend_development.md](docs/lightweight_backend_development.md): 涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面。
 
 ---
 
