@@ -45,7 +45,7 @@
 - **调用示例**：
 
 ```bash
-curl -X POST localhost:5000/chat \
+curl -X POST https://www.rendazhang.com/cloudchat/chat \
      -H "Content-Type: application/json" \
      -H "Referer: https://rendazhang.com" \
      -d '{"message": "Hello from curl!"}'
@@ -88,9 +88,9 @@ curl -X POST localhost:5000/chat \
 - **调用示例**：
 
 ```bash
-curl -X POST localhost:5000/deepseek_chat \
+curl -X POST https://www.rendazhang.com/cloudchat/deepseek_chat \
      -H "Content-Type: application/json" \
-     -H "Referer: https://rendazhang.com" \
+     -H "Referer: https://www.rendazhang.com" \
      -d '{"message": "你好，DeepSeek"}'
 ```
 
@@ -121,9 +121,9 @@ curl -X POST localhost:5000/deepseek_chat \
 - **调用示例**：
 
 ```bash
-curl -X POST localhost:5000/generate_image \
+curl -X POST https://www.rendazhang.com/cloudchat/generate_image \
      -H "Content-Type: application/json" \
-     -H "Referer: https://rendazhang.com" \
+     -H "Referer: https://www.rendazhang.com" \
      -d '{"prompt": "一只在阳光下打盹的橘猫"}'
 ```
 
@@ -141,8 +141,11 @@ curl -X POST localhost:5000/generate_image \
 - **请求头**：`Content-Type: application/json`
 - **请求体示例**：空对象即可。
 
-```json
-{}
+```bash
+curl -X POST https://www.rendazhang.com/cloudchat/reset_chat \
+     -H "Content-Type: application/json" \
+     -H "Referer: https://www.rendazhang.com" \
+     -d '{}'
 ```
 
 - **返回示例**：
