@@ -5,8 +5,8 @@
 - [API 文档](#api-%E6%96%87%E6%A1%A3)
   - [简介](#%E7%AE%80%E4%BB%8B)
   - [POST `/chat`](#post-chat)
-  - [POST `/deepseek_chat`](#post-deepseek_chat)
   - [POST `/generate_image`](#post-generate_image)
+  - [POST `/deepseek_chat`](#post-deepseek_chat)
   - [POST `/reset_chat`](#post-reset_chat)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
@@ -66,38 +66,6 @@ curl -X POST https://www.rendazhang.com/cloudchat/chat \
 
 ---
 
-## POST `/deepseek_chat`
-
-- **功能**：使用 DeepSeek Chat 模型进行多轮流式对话，历史消息存储在 Redis 中。
-- **请求头**：`Content-Type: application/json`
-- **请求体示例**：
-
-```json
-{
-  "message": "你好，DeepSeek"
-}
-```
-
-- **返回**：服务器以分段 JSON 流形式连续返回回复文本：
-
-```json
-{"text": "你好"}
-{"text": "，我是 DeepSeek"}
-```
-
-- **调用示例**：
-
-```bash
-curl -X POST https://www.rendazhang.com/cloudchat/deepseek_chat \
-     -H "Content-Type: application/json" \
-     -H "Referer: https://www.rendazhang.com" \
-     -d '{"message": "你好，DeepSeek"}'
-```
-
-- **说明**：会话默认保留最近 6 轮对话，如需清空历史可调用 [`/reset_chat`](#post-reset_chat)。
-
----
-
 ## POST `/generate_image`
 
 - **功能**：根据提示词生成图像。
@@ -132,6 +100,38 @@ curl -X POST https://www.rendazhang.com/cloudchat/generate_image \
 ```json
 {"image_urls": ["https://dashscope.aliyun.com/..."]}
 ```
+
+---
+
+## POST `/deepseek_chat`
+
+- **功能**：使用 DeepSeek Chat 模型进行多轮流式对话，历史消息存储在 Redis 中。
+- **请求头**：`Content-Type: application/json`
+- **请求体示例**：
+
+```json
+{
+  "message": "你好，DeepSeek"
+}
+```
+
+- **返回**：服务器以分段 JSON 流形式连续返回回复文本：
+
+```json
+{"text": "你好"}
+{"text": "，我是 DeepSeek"}
+```
+
+- **调用示例**：
+
+```bash
+curl -X POST https://www.rendazhang.com/cloudchat/deepseek_chat \
+     -H "Content-Type: application/json" \
+     -H "Referer: https://www.rendazhang.com" \
+     -d '{"message": "你好，DeepSeek"}'
+```
+
+- **说明**：会话默认保留最近 6 轮对话，如需清空历史可调用 [`/reset_chat`](#post-reset_chat)。
 
 ---
 
