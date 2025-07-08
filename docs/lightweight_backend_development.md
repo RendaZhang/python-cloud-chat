@@ -88,18 +88,25 @@ Redis 是基于内存的存储系统，如果会话数据不断积累，可能�
 
 虽然 Redis 是高性能选择，但考虑到服务器内存有限，如果使用 Redis：
 
-1. 安装 Redis：
+1. 安装 Redis（CentOS 7）：
 
 ```bash
-sudo apt update
-sudo apt install redis-server
+sudo yum install epel-release -y
+sudo yum install redis -y
+sudo systemctl start redis
+sudo systemctl enable redis
 ```
 
-2. 配置 Redis 内存限制（在 `/etc/redis/redis.conf`）：
+2. 配置 `/etc/redis.conf`：
 
 ```bash
-maxmemory 128mb               # 限制最大内存使用
-maxmemory-policy allkeys-lru  # 使用 LRU 淘汰策略
+maxmemory 64mb
+maxmemory-policy allkeys-lru
+save ""
+appendonly no
+activerehashing yes
+requirepass your_redis_password
+bind 127.0.0.1
 ```
 
 3. Flask 配置：

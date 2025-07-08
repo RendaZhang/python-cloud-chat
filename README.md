@@ -159,27 +159,87 @@ cd /opt/cloudchat
 # 将代码上传或 git clone 到此目录
 ```
 
-2. **创建虚拟环境并安装依赖**
+2. **安装并配置 Redis**
+
+```bash
+# 安装 EPEL 仓库 和 Redis
+sudo yum install epel-release -y
+sudo yum install redis -y
+
+# 启动 Redis 服务并设置开机自启
+sudo systemctl start redis
+sudo systemctl enable redis
+
+# 检查 Redis 状态
+sudo systemctl status redis
+```
+
+编辑 `/etc/redis.conf`，修改以下参数：
+
+```bash
+# 设置内存限制为 64MB
+maxmemory 64mb
+maxmemory-policy allkeys-lru
+
+# 禁用持久化
+save ""
+appendonly no
+
+# 启用内存碎片整理
+activerehashing yes
+
+# 设置密码 (可选但推荐）
+requirepass your_redis_password
+
+# 绑定到本地回环地址 (确保安全)
+bind 127.0.0.1
+```
+
+重启并验证：
+
+```bash
+# 重启
+sudo systemctl restart redis
+
+# 如果没有设置密码可直接运行：
+redis-cli info memory | grep maxmemory
+
+# 如果设置了密码：
+redis-cli
+127.0.0.1:6379> AUTH your_redis_password
+# 查看 Redis 内存使用
+127.0.0.1:6379> INFO memory
+# 手动清除 Redis 数据
+127.0.0.1:6379> flushdb
+# 查看活跃会话
+keys *
+
+```
+
+3. **创建虚拟环境并安装依赖**
 
 ```bash
 # 构建隔离环境：
 python -m venv venv
+
 # 激活环境后安装依赖：
 source venv/bin/activate
+
 # 安装依赖：
 pip install -r requirements.txt
+
 # 退出虚拟环境：
 deactivate
 ```
 
-3. **编写 systemd 服务文件**
+4. **编写 systemd 服务文件**
 
 在 `/etc/systemd/system/cloudchat.service` 中填写如下内容：
 
 ```ini
 [Unit]
 Description=CloudChat Flask App with Gunicorn
-After=network.target
+After=network.target redis.service
 
 [Service]
 User=root
@@ -189,6 +249,7 @@ Environment="DASHSCOPE_API_KEY=*****************"
 Environment="DEEPSEEK_API_KEY=******************"
 Environment="OPENAI_API_KEY=********************"
 Environment="FLASK_SECRET_KEY=******************"
+Environment="REDIS_PASSWORD=******************"
 # **注意**：如下 ExecStart 的命令的换行和注释只是为了方便展示，
 # * 使用的时候去掉命令包含的注释 和 换行符 和 '\'符号 以及 多余的空格
 ExecStart=/opt/cloudchat/venv/bin/gunicorn \
@@ -212,6 +273,9 @@ ExecStart=/opt/cloudchat/venv/bin/gunicorn \
 Restart=always
 RestartSec=3
 KillSignal=SIGINT
+ProtectSystem=full
+PrivateTmp=true
+NoNewPrivileges=true
 
 [Install]
 WantedBy=multi-user.target
@@ -225,14 +289,14 @@ WantedBy=multi-user.target
 - `Restart` 相关配置保证服务异常后自动重启。
 ```
 
-4. **启动并管理服务**
+5. **启动并管理服务**
 
 ```bash
 sudo systemctl daemon-reload        # 载入新服务
 sudo systemctl start cloudchat      # 启动 CloudChat
 sudo systemctl enable cloudchat     # 开机自启
 sudo systemctl status cloudchat     # 查看运行状态
-journalctl -u cloudchat.service -f  # 监控状态
+journalctl -u cloudchat.service -f  # 查看应用动态日志
 ```
 
 修改 service 文件或代码后，可运行：
@@ -254,7 +318,7 @@ MaxRetentionSec=7day  # 日志最多保留 7 天
 sudo systemctl restart systemd-journald
 ```
 
-5. **验证和监控**
+6. **验证和监控**
 
 检查工作进程：
 ```bash

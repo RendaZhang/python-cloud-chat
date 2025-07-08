@@ -5,7 +5,6 @@
 - [API 文档](#api-%E6%96%87%E6%A1%A3)
   - [简介](#%E7%AE%80%E4%BB%8B)
   - [POST `/chat`](#post-chat)
-  - [POST `/deepseek_chat`](#post-deepseek_chat)
   - [POST `/generate_image`](#post-generate_image)
   - [POST `/reset_chat`](#post-reset_chat)
 
@@ -66,9 +65,8 @@ curl -X POST localhost:5000/chat \
 
 ---
 
-## POST `/deepseek_chat`
-
 - **功能**：使用 DeepSeek Chat 模型进行多轮流式对话，历史消息存储在 Redis 中。
+- **注意**：调用前请按 README 中的步骤安装并配置 Redis。
 - **请求头**：`Content-Type: application/json`
 - **请求体示例**：
 
