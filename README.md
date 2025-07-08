@@ -16,9 +16,10 @@
       - [macOS/Linux:](#macoslinux-1)
       - [Windows PowerShell:](#windows-powershell-1)
   - [🚀 启动服务](#-%E5%90%AF%E5%8A%A8%E6%9C%8D%E5%8A%A1)
-  - [在 CentOS 7 部署与测试（示例）](#%E5%9C%A8-centos-7-%E9%83%A8%E7%BD%B2%E4%B8%8E%E6%B5%8B%E8%AF%95%E7%A4%BA%E4%BE%8B)
-  - [📁 文件说明](#-%E6%96%87%E4%BB%B6%E8%AF%B4%E6%98%8E)
-  - [接口说明](#%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E)
+  - [在 CentOS 7 部署与测试](#%E5%9C%A8-centos-7-%E9%83%A8%E7%BD%B2%E4%B8%8E%E6%B5%8B%E8%AF%95)
+  - [📁 项目文件说明](#-%E9%A1%B9%E7%9B%AE%E6%96%87%E4%BB%B6%E8%AF%B4%E6%98%8E)
+    - [📡 接口文档](#-%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
+    - [📘 Python 轻量级后端开发指南](#-python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
   - [相关项目](#%E7%9B%B8%E5%85%B3%E9%A1%B9%E7%9B%AE)
     - [前端项目](#%E5%89%8D%E7%AB%AF%E9%A1%B9%E7%9B%AE)
     - [Nginx 项目](#nginx-%E9%A1%B9%E7%9B%AE)
@@ -30,17 +31,17 @@
 
 # 🌩️ Python Cloud Chat · 云端 AI 聊天与图像生成服务
 
-* **Last Updated:** July 7, 2025, 17:50 (UTC+8)
+* **Last Updated:** July 8, 2025, 21:20 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
 
 ## 📝 项目简介
 
-这是一个基于 Flask 的轻量级 Python Web 服务，整合了阿里云 DashScope API，实现了以下功能。
+这是一个基于 Flask 的轻量级 Python Web 服务，实现了以下功能。
 项目最初在 CentOS 7 系统的阿里云香港轻量级服务器（2 vCPUs、1 GB RAM、40 GB SSD）上部署并测试：
 
-- 🤖 与 AI 模型实时对话（流式输出）
+- 🤖 与 AI 模型实时对话
 - 🖼️ 基于 Stable Diffusion 的 AI 图像生成
-- ✅ 支持 DashScope API Key 环境变量配置
+- ✅ 支持 DashScope / OpenAI / Deepseek API Key 环境变量配置
 - 💻 支持 macOS / Windows / Linux 开发环境
 - 🌐 可与前端页面或第三方应用对接
 - 🚀 使用 Gunicorn + Gevent 部署，支持高并发流式响应
@@ -52,10 +53,10 @@
 - **后端框架**：Flask 2.0.1
 - **核心依赖**：
   - `dashscope` （阿里云多模态大模型平台）
-  - `openai`（预留扩展）
+  - `openai`（Deepseek 和 ChatGpt 都可以使用 OpenAI SDK）
   - `requests` 用于网络请求
 - **图像生成模型**：stable-diffusion-v1.5
-- **聊天模型**：qwen-turbo-2025-04-28
+- **聊天模型**：deepseek-chat, qwen-turbo-2025-04-28
 - **WSGI 服务器**：Gunicorn + Gevent
 
 ---
@@ -72,10 +73,11 @@
 ## 📦 安装指南
 
 ### 1. 克隆项目
+
 ```bash
 git clone https://gitee.com/RendaZhang/python-cloud-chat.git
 cd python-cloud-chat
-````
+```
 
 ### 2. 创建并激活虚拟环境（推荐）
 
@@ -129,104 +131,158 @@ gunicorn --worker-class gevent --workers 2 --bind 0.0.0.0:5000 app:app
 
 启动后在 `0.0.0.0:5000` 监听。
 
-## 在 CentOS 7 部署与测试（示例）
+## 在 CentOS 7 部署与测试
 
-以下步骤展示了在全新 CentOS 7 系统上部署 CloudChat，并通过 systemd 管理服务：
+以下步骤展示了在 CentOS 7 系统上部署 CloudChat，并通过 systemd 管理服务：
 
 1. **准备工作目录**
-   ```bash
-   mkdir -p /opt/cloudchat
-   cd /opt/cloudchat
-   # 将代码上传或 git clone 到此目录
-   ```
+
+```bash
+mkdir -p /opt/cloudchat
+cd /opt/cloudchat
+# 将代码上传或 git clone 到此目录
+```
+
 2. **创建虚拟环境并安装依赖**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   deactivate
-   ```
-   - `virtualenv` 用于构建隔离环境；
-   - `source` 激活环境后安装依赖；
-   - `deactivate` 退出虚拟环境。
+
+```bash
+# 构建隔离环境：
+python -m venv venv
+# 激活环境后安装依赖：
+source venv/bin/activate
+# 安装依赖：
+pip install -r requirements.txt
+# 退出虚拟环境：
+deactivate
+```
+
 3. **编写 systemd 服务文件**
-   在 `/etc/systemd/system/cloudchat.service` 中填写如下内容：
-   ```ini
-   [Unit]
-   Description=CloudChat Flask App with Gunicorn
-   After=network.target
 
-   [Service]
-   User=root
-   WorkingDirectory=/opt/cloudchat
-   Environment="PATH=/opt/cloudchat/venv/bin"
-   Environment="DASHSCOPE_API_KEY=sk-******************"
-   Environment="DEEPSEEK_API_KEY=sk-******************"
-   Environment="OPENAI_API_KEY=sk-***********************"
-   ExecStart=/opt/cloudchat/venv/bin/gunicorn \
-      --worker-class gevent \
-      --workers 2 \
-      --worker-connections 50 \
-      --max-requests 1000 \
-      --max-requests-jitter 50 \
-      --timeout 300 \
-      --bind 0.0.0.0:5000 app:app
+在 `/etc/systemd/system/cloudchat.service` 中填写如下内容：
 
-   Restart=always
-   RestartSec=3
-   KillSignal=SIGINT
+```ini
+[Unit]
+Description=CloudChat Flask App with Gunicorn
+After=network.target
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
-  - `WorkingDirectory` 指向代码目录；
-  - `Environment` 中的密钥替换为实际值；
-  - `ExecStart` 使用 Gunicorn + Gevent 启动应用；
-  - `Restart` 相关配置保证服务异常后自动重启。
+[Service]
+User=root
+WorkingDirectory=/opt/cloudchat
+Environment="PATH=/opt/cloudchat/venv/bin"
+Environment="DASHSCOPE_API_KEY=sk-******************"
+Environment="DEEPSEEK_API_KEY=sk-******************"
+Environment="OPENAI_API_KEY=sk-***********************"
+# **注意**：如下 ExecStart 的命令的换行和注释只是为了方便展示，
+# * 使用的时候去掉命令包含的注释 和 换行符 和 '\'符号 以及 多余的空格
+ExecStart=/opt/cloudchat/venv/bin/gunicorn \
+   # 使用 Gevent 协程工作器
+   --worker-class gevent \
+   # 适合 2vCPU 的工作进程数（公式：CPU核心×2+1）
+   --workers 2 \
+   # 限制每个工作进程连接数为 50
+   --worker-connections 50 \
+   # worker 进程处理多少个请求后会被重启（防止内存泄漏，保持性能稳定）
+   --max-requests 1000 \
+   # 随机化重启阈值，避免同时重启
+   --max-requests-jitter 50 \
+   # 流式响应超时时间（5分钟）
+   # 与 Nginx 的 `proxy_read_timeout 300s` 配合使用
+   --timeout 300 \
+   # 绑定端口
+   --bind 0.0.0.0:5000 app:app
+
+# 关键重启配置
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target
+```
+
+参数说明：
+```markdown
+- `WorkingDirectory` 指向代码目录；
+- `Environment` 中的密钥替换为实际值；
+- `ExecStart` 使用 Gunicorn + Gevent 启动应用；
+- `Restart` 相关配置保证服务异常后自动重启。
+```
+
 4. **启动并管理服务**
-   ```bash
-   sudo systemctl daemon-reload        # 载入新服务
-   sudo systemctl start cloudchat      # 启动 CloudChat
-   sudo systemctl enable cloudchat     # 开机自启
-   sudo systemctl status cloudchat     # 查看运行状态
-   journalctl -u cloudchat.service -f  # 监控状态
-   ```
-   修改 service 文件或代码后，可运行：
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl restart cloudchat
-   ```
-   如果你希望限制 systemd 的日志的保留时间或大小，可以编辑 /etc/systemd/journald.conf 文件。例如：
-   ```bash
-   SystemMaxUse=100M  # 限制日志占用的最大磁盘空间为 100MB
-   MaxRetentionSec=7day  # 日志最多保留 7 天
-   ```
-   修改后，重启 journald 服务：
-   ```bash
-   sudo systemctl restart systemd-journald
-   ```
-5. **接口测试**
-   ```bash
-   curl -X POST localhost:5000/chat \
-        -H "Content-Type: application/json" \
-        -H "Referer: https://rendazhang.com" \
-        -d '{"message": "Hello from curl!"}'
-   ```
-   预期输出（分段）：
-   ```json
-   {"text": "Hello"}
-   {"text": "!"}
-   {"text": " It"}
-   {"text": "'s"}
-   {"text": " great to hear from"}
-   {"text": " you. How can"}
-   {"text": " I assist you today"}
-   {"text": "? \ud83d\ude0a"}
-   ```
+
+```bash
+sudo systemctl daemon-reload        # 载入新服务
+sudo systemctl start cloudchat      # 启动 CloudChat
+sudo systemctl enable cloudchat     # 开机自启
+sudo systemctl status cloudchat     # 查看运行状态
+journalctl -u cloudchat.service -f  # 监控状态
+```
+
+修改 service 文件或代码后，可运行：
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart cloudchat
+```
+
+如果你希望限制 systemd 的日志的保留时间或大小，
+可以编辑 /etc/systemd/journald.conf 文件。
+例如：
+```bash
+SystemMaxUse=100M  # 限制日志占用的最大磁盘空间为 100MB
+MaxRetentionSec=7day  # 日志最多保留 7 天
+```
+
+修改后，重启 journald 服务：
+```bash
+sudo systemctl restart systemd-journald
+```
+
+5. **验证和监控**
+
+检查工作进程：
+```bash
+# 应该看到 1 个 master 进程和 2 个 worker 进程
+ps aux | grep gunicorn
+```
+
+测试接口：
+```bash
+curl -X POST localhost:5000/chat \
+      -H "Content-Type: application/json" \
+      -H "Referer: https://rendazhang.com" \
+      -d '{"message": "Hello from curl!"}'
+# 预期输出（分段）：
+{"text": "Hello"}
+{"text": "!"}
+{"text": " It"}
+{"text": "'s"}
+{"text": " great to hear from"}
+{"text": " you. How can"}
+{"text": " I assist you today"}
+{"text": "? \ud83d\ude0a"}
+```
+
+压力测试（安装 `siege` 后）：
+```bash
+siege -c 10 -t 30s http://localhost:5000/chat
+```
+
+内存监控：
+```bash
+htop
+free -h
+```
+
+**内存不足处理**：
+```markdown
+如果内存使用接近 90%，可：
+- 减少 `--workers` 到 1
+- 降低 `--worker-connections` 值
+```
 
 ---
 
-## 📁 文件说明
+## 📁 项目文件说明
 
 | 文件名                | 功能描述                    |
 | ------------------ | ----------------------- |
@@ -235,11 +291,13 @@ gunicorn --worker-class gevent --workers 2 --bind 0.0.0.0:5000 app:app
 | `.python-version`  | 指定 Python 版本（如使用 pyenv） |
 | `README.md`        | 中文说明文档                  |
 
----
+### 📡 接口文档
 
-## 接口说明
+[docs/api.md](docs/api.md)
 
-* 📡 [接口文档](docs/api.md)
+### 📘 Python 轻量级后端开发指南
+
+[docs/lightweight_backend_development.md](docs/lightweight_backend_development.md)
 
 ---
 
@@ -282,6 +340,8 @@ gunicorn --worker-class gevent --workers 2 --bind 0.0.0.0:5000 app:app
 
 ## 📬 联系方式
 
-作者：张人大（Renda Zhang）
-邮箱：[952402967@qq.com](mailto:952402967@qq.com)
-个人网站：[https://rendazhang.com](https://rendazhang.com)
+* 联系人：张人大（Renda Zhang）
+* 邮箱：[952402967@qq.com](mailto:952402967@qq.com)
+* 个人网站：[https://rendazhang.com](https://rendazhang.com)
+
+> ⏰ **Maintainer**：@Renda — 如果本项目对你有帮助，请不要忘了点亮 ⭐️ Star 支持我们！
