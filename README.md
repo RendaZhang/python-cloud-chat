@@ -126,6 +126,15 @@ $env:FLASK_SECRET_KEY="your_flask_secret_key"
 
 或直接添加到 `activate` 文件中。
 
+可选的环境变量示例：
+
+```bash
+# 自定义模型或会话配置
+export QWEN_MODEL="qwen-turbo-2025-04-28"
+export SD_MODEL="stable-diffusion-v1.5"
+export MAX_HISTORY=6
+```
+
 ---
 
 ## 🚀 启动服务

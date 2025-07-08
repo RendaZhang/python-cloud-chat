@@ -26,16 +26,38 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "default-secret-key")
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 redis_password = os.getenv("REDIS_PASSWORD", "")
 
+# ===== 全局可配置常量 =====
+# 系统提示语，可根据需要修改角色设定
+DEFAULT_SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "请你扮演张人大，英文名 Renda Zhang")
+# Qwen 聊天模型名称
+QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-turbo-2025-04-28")
+# DeepSeek 聊天模型名称
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+# DeepSeek API 基础地址
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+# Stable Diffusion 图像模型名称
+SD_MODEL = os.getenv("SD_MODEL", "stable-diffusion-v1.5")
+# 生成图像的分辨率
+IMAGE_SIZE = os.getenv("IMAGE_SIZE", "512*512")
+# 保留的历史对话轮数
+MAX_HISTORY = int(os.getenv("MAX_HISTORY", 6))
+# Redis 服务配置
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_TIMEOUT = int(os.getenv("REDIS_TIMEOUT", 5))
+SESSION_EXPIRE = int(os.getenv("SESSION_EXPIRE", 3600))  # 会话过期时间（秒）
+
 # ===== Redis 会话配置 =====
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_REDIS"] = redis.Redis(
-    host="localhost",
-    port=6379,
+    host=REDIS_HOST,
+    port=REDIS_PORT,
     password=redis_password,
-    db=0,
-    socket_timeout=5,
+    db=REDIS_DB,
+    socket_timeout=REDIS_TIMEOUT,
 )
-app.config["PERMANENT_SESSION_LIFETIME"] = 3600  # 1小时过期
+app.config["PERMANENT_SESSION_LIFETIME"] = SESSION_EXPIRE  # 1小时过期
 Session(app)
 
 
@@ -50,7 +72,9 @@ def generate_image():
         return jsonify({"error": "Prompt is required"}), 400
 
     rsp = ImageSynthesis.call(
-        model="stable-diffusion-v1.5", prompt=prompt, size="512*512"
+        model=SD_MODEL,
+        prompt=prompt,
+        size=IMAGE_SIZE,
     )  # Call DashScope image API
 
     if rsp.status_code == HTTPStatus.OK:
@@ -79,7 +103,10 @@ def generate_response(prompt_text):
     """Generator yielding incremental chat responses."""
 
     response_generator = Generation.call(
-        model="qwen-turbo-2025-04-28", prompt=prompt_text, stream=True, top_p=0.8
+        model=QWEN_MODEL,
+        prompt=prompt_text,
+        stream=True,
+        top_p=0.8,
     )  # Request streaming chat completion
     last_length = 0
     for response in response_generator:
@@ -97,9 +124,7 @@ def deepseek_chat():
 
     if "messages" not in session:
         session["session_id"] = str(uuid.uuid4())
-        session["messages"] = [
-            {"role": "system", "content": "请你扮演张人大，英文名 Renda Zhang"}
-        ]
+        session["messages"] = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
 
     content = request.json
     user_message = content.get("message")
@@ -109,7 +134,6 @@ def deepseek_chat():
 
     session["messages"].append({"role": "user", "content": user_message})
 
-    MAX_HISTORY = 6
     if len(session["messages"]) > MAX_HISTORY * 2 + 1:
         session["messages"] = [session["messages"][0]] + session["messages"][
             -MAX_HISTORY * 2 :
@@ -126,12 +150,12 @@ def generate_deepseek_response(messages):
 
     client = openai.OpenAI(
         api_key=deepseek_api_key,
-        base_url="https://api.deepseek.com/v1",
+        base_url=DEEPSEEK_BASE_URL,
     )
 
     full_response = []
     stream = client.chat.completions.create(
-        model="deepseek-chat",
+        model=DEEPSEEK_MODEL,
         messages=messages,
         stream=True,
         temperature=0.7,
@@ -155,9 +179,7 @@ def generate_deepseek_response(messages):
 def reset_chat():
     """重置当前会话的对话历史"""
     if "messages" in session:
-        session["messages"] = [
-            {"role": "system", "content": "请你扮演张人大，英文名 Renda Zhang"}
-        ]
+        session["messages"] = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
         session.modified = True
     return jsonify({"status": "对话历史已重置"})
 
