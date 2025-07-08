@@ -5,3 +5,7 @@ requests
 openai
 gunicorn
 gevent
+flask-session
+redis
+psutil
+apscheduler
