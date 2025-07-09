@@ -3,6 +3,7 @@
 import json
 import os
 import uuid
+import time
 from http import HTTPStatus
 import openai
 import psutil
@@ -182,6 +183,13 @@ def reset_chat():
         session["messages"] = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
         session.modified = True
     return jsonify({"status": "对话历史已重置"})
+
+
+@app.route("/test", methods=["GET"])
+def cache_test():
+    """返回动态内容以用于 Nginx 缓存测试"""
+
+    return jsonify({"timestamp": time.time(), "request_id": str(uuid.uuid4())})
 
 
 # ===== 系统监控 =====

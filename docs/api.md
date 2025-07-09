@@ -8,12 +8,13 @@
   - [POST `/generate_image`](#post-generate_image)
   - [POST `/deepseek_chat`](#post-deepseek_chat)
   - [POST `/reset_chat`](#post-reset_chat)
+  - [GET `/test`](#get-test)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 # API 文档
 
-* **Last Updated:** July 8, 2025, 21:40 (UTC+8)
+* **Last Updated:** July 9, 2025, 13:00 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
 
 ---
@@ -153,3 +154,20 @@ curl -X POST https://www.rendazhang.com/cloudchat/reset_chat \
 ```json
 {"status": "对话历史已重置"}
 ```
+
+---
+
+## GET `/test`
+
+- **功能**：返回动态时间戳和随机 ID，用于测试 Nginx 缓存及 `X-Cache-Status` 头。
+- **请求头**：无需特殊头，可直接 GET 请求。
+- **返回示例**：
+
+```json
+{
+  "timestamp": 1720000000.0,
+  "request_id": "a98e7caa-1234-5678-9abc-def012345678"
+}
+```
+
+- **说明**：如果通过 Nginx 访问并启用 `proxy_cache`，重复请求应在响应头看到 `X-Cache-Status: HIT`。
