@@ -182,7 +182,7 @@ def reset_chat():
     if "messages" in session:
         session["messages"] = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
         session.modified = True
-    return jsonify({"status": "对话历史已重置"})
+    return jsonify({"status": "Reset chat history successfully"})
 
 
 @app.route("/test", methods=["GET"])
