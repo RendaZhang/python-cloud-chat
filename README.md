@@ -276,6 +276,8 @@ KillSignal=SIGINT
 ProtectSystem=full
 PrivateTmp=true
 NoNewPrivileges=true
+# 保护关键服务不被优先杀死
+OOMScoreAdjust=-100
 
 [Install]
 WantedBy=multi-user.target
