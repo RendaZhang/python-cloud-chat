@@ -13,7 +13,7 @@
 
 # Python 轻量级后端开发指南
 
-* **Last Updated:** July 8, 2025, 21:20 (UTC+8)
+* **Last Updated:** July 14, 2025, 00:30 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
 
 ---
@@ -86,52 +86,7 @@ Redis 是基于内存的存储系统，如果会话数据不断积累，可能�
 - 基于数量的清理：使用 Redis 的 LPUSH 和 LTRIM 命令来维护一个固定长度的列表。
 - 混合策略：先删除过期的会话，再保留最近的 N 个会话。
 
-虽然 Redis 是高性能选择，但考虑到服务器内存有限，如果使用 Redis：
-
-1. 安装 Redis（CentOS 7）：
-
-```bash
-sudo yum install epel-release -y
-sudo yum install redis -y
-sudo systemctl start redis
-sudo systemctl enable redis
-```
-
-2. 配置 `/etc/redis.conf`：
-
-```bash
-maxmemory 64mb
-maxmemory-policy allkeys-lru
-save ""
-appendonly no
-activerehashing yes
-requirepass your_redis_password
-bind 127.0.0.1
-```
-
-3. Flask 配置：
-
-```python
-app.config['SESSION_TYPE'] = 'redis'
-app.config['SESSION_REDIS'] = redis.from_url('redis://localhost:6379')
-```
-
-限制对话历史长度：
-
-```python
-import redis
-
-MAX_HISTORY = 5  # 只保留最近 5 轮对话
-redis_client = redis.Redis(host='localhost', port=6379, db=0)
-
-# 假设会话消息存储在 Redis 列表中
-session_key = 'session:123:messages'
-
-# 检查列表长度
-if redis_client.llen(session_key) > MAX_HISTORY * 2 + 1:
-    # 保留系统消息和最近的对话
-    redis_client.ltrim(session_key, -MAX_HISTORY*2, -1)
-```
+虽然 Redis 是高性能选择，但考虑到服务器内存有限，如果使用 Redis，具体操作步骤可以参考 Nginx 项目的文档内容：[安装并配置 Redis](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%AE%89%E8%A3%85%E5%B9%B6%E9%85%8D%E7%BD%AE-redis)
 
 ### 方案 C: SQLite 数据库（轻量级数据库）
 
