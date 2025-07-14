@@ -2,12 +2,15 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
-- [🌩️ Python Cloud Chat · 云端 AI 聊天与图像生成服务](#-python-cloud-chat-%C2%B7-%E4%BA%91%E7%AB%AF-ai-%E8%81%8A%E5%A4%A9%E4%B8%8E%E5%9B%BE%E5%83%8F%E7%94%9F%E6%88%90%E6%9C%8D%E5%8A%A1)
-  - [📝 项目简介](#-%E9%A1%B9%E7%9B%AE%E7%AE%80%E4%BB%8B)
-  - [🧱 项目结构与技术栈](#-%E9%A1%B9%E7%9B%AE%E7%BB%93%E6%9E%84%E4%B8%8E%E6%8A%80%E6%9C%AF%E6%A0%88)
+- [Python Cloud Chat · 云端 AI 聊天与图像生成服务](#python-cloud-chat-%C2%B7-%E4%BA%91%E7%AB%AF-ai-%E8%81%8A%E5%A4%A9%E4%B8%8E%E5%9B%BE%E5%83%8F%E7%94%9F%E6%88%90%E6%9C%8D%E5%8A%A1)
+  - [项目简介](#%E9%A1%B9%E7%9B%AE%E7%AE%80%E4%BB%8B)
+  - [项目结构与技术栈](#%E9%A1%B9%E7%9B%AE%E7%BB%93%E6%9E%84%E4%B8%8E%E6%8A%80%E6%9C%AF%E6%A0%88)
     - [Gunicorn + Gevent 的优势](#gunicorn--gevent-%E7%9A%84%E4%BC%98%E5%8A%BF)
   - [在 Ubuntu 部署与测试](#%E5%9C%A8-ubuntu-%E9%83%A8%E7%BD%B2%E4%B8%8E%E6%B5%8B%E8%AF%95)
-  - [📦 安装指南](#-%E5%AE%89%E8%A3%85%E6%8C%87%E5%8D%97)
+  - [关联项目](#%E5%85%B3%E8%81%94%E9%A1%B9%E7%9B%AE)
+    - [前端项目](#%E5%89%8D%E7%AB%AF%E9%A1%B9%E7%9B%AE)
+    - [Nginx 项目](#nginx-%E9%A1%B9%E7%9B%AE)
+  - [安装和部署指南](#%E5%AE%89%E8%A3%85%E5%92%8C%E9%83%A8%E7%BD%B2%E6%8C%87%E5%8D%97)
     - [1. 克隆项目](#1-%E5%85%8B%E9%9A%86%E9%A1%B9%E7%9B%AE)
     - [2. 创建并激活虚拟环境（推荐）](#2-%E5%88%9B%E5%BB%BA%E5%B9%B6%E6%BF%80%E6%B4%BB%E8%99%9A%E6%8B%9F%E7%8E%AF%E5%A2%83%E6%8E%A8%E8%8D%90)
       - [macOS/Linux:](#macoslinux)
@@ -16,27 +19,24 @@
     - [4. 设置 API 密钥（推荐使用环境变量）](#4-%E8%AE%BE%E7%BD%AE-api-%E5%AF%86%E9%92%A5%E6%8E%A8%E8%8D%90%E4%BD%BF%E7%94%A8%E7%8E%AF%E5%A2%83%E5%8F%98%E9%87%8F)
       - [macOS/Linux:](#macoslinux-1)
       - [Windows PowerShell:](#windows-powershell-1)
-  - [🚀 启动服务](#-%E5%90%AF%E5%8A%A8%E6%9C%8D%E5%8A%A1)
-  - [📁 项目文件说明](#-%E9%A1%B9%E7%9B%AE%E6%96%87%E4%BB%B6%E8%AF%B4%E6%98%8E)
-    - [📡 接口文档](#-%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
-    - [📘 Python 轻量级后端开发指南](#-python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
-  - [相关项目](#%E7%9B%B8%E5%85%B3%E9%A1%B9%E7%9B%AE)
-    - [前端项目](#%E5%89%8D%E7%AB%AF%E9%A1%B9%E7%9B%AE)
-    - [Nginx 项目](#nginx-%E9%A1%B9%E7%9B%AE)
+    - [5. 启动服务](#5-%E5%90%AF%E5%8A%A8%E6%9C%8D%E5%8A%A1)
+  - [项目文件说明](#%E9%A1%B9%E7%9B%AE%E6%96%87%E4%BB%B6%E8%AF%B4%E6%98%8E)
+    - [接口文档](#%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
+    - [Python 轻量级后端开发指南](#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
   - [🙌 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
   - [🔐 License](#-license)
   - [📬 联系方式](#-%E8%81%94%E7%B3%BB%E6%96%B9%E5%BC%8F)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-# 🌩️ Python Cloud Chat · 云端 AI 聊天与图像生成服务
+# Python Cloud Chat · 云端 AI 聊天与图像生成服务
 
-* **Last Updated:** July 14, 2025, 00:20 (UTC+8)
+* **Last Updated:** July 14, 2025, 18:30 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
 
 ---
 
-## 📝 项目简介
+## 项目简介
 
 项目目前在 Ubuntu 24 系统的阿里云香港轻量级服务器（2 vCPUs、1 GB RAM、40 GB SSD）上部署并测试。
 
@@ -52,7 +52,7 @@
 
 ---
 
-## 🧱 项目结构与技术栈
+## 项目结构与技术栈
 
 - **后端框架**：Flask 3.1.1
 - **核心依赖**：
@@ -78,11 +78,27 @@
 
 在 Ubuntu 系统上安装并配置 Redis，并通过 systemd 部署和管理后端 CloudChat 服务。
 
-具体步骤请参考 Nginx 项目的文档：[后端迁移](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%90%8E%E7%AB%AF%E8%BF%81%E7%A7%BB)
+具体步骤请参考 Nginx 项目的文档内容：📄 [后端迁移](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%90%8E%E7%AB%AF%E8%BF%81%E7%A7%BB)
 
 ---
 
-## 📦 安装指南
+## 关联项目
+
+### 前端项目
+
+具体情况和网站页面功能描述请参考前端项目：📁 [Renda Zhang Web](https://github.com/RendaZhang/rendazhang.github.io)
+
+### Nginx 项目
+
+具体情况和项目部署请参考 Nginx 项目：📁 [Nginx Conf](https://github.com/RendaZhang/nginx-conf)
+
+---
+
+## 安装和部署指南
+
+具体的操作步骤请参考 Nginx 项目的文档内容：📄 [后端迁移](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%90%8E%E7%AB%AF%E8%BF%81%E7%A7%BB)
+
+如下是通用的基本步骤描述。
 
 ### 1. 克隆项目
 
@@ -144,9 +160,7 @@ export SD_MODEL="stable-diffusion-v1.5"
 export MAX_HISTORY=6
 ```
 
----
-
-## 🚀 启动服务
+### 5. 启动服务
 
 默认使用 **Gunicorn + Gevent** 作为 WSGI 服务器。
 
@@ -154,7 +168,7 @@ export MAX_HISTORY=6
 
 ---
 
-## 📁 项目文件说明
+## 项目文件说明
 
 | 文件名              | 功能描述                |
 | ------------------ | ----------------------- |
@@ -162,25 +176,13 @@ export MAX_HISTORY=6
 | `requirements.txt` | 项目依赖列表             |
 | `README.md`        | 中文说明文档             |
 
-### 📡 接口文档
+### 接口文档
 
-[docs/api.md](docs/api.md): 主要描述了本服务提供的接口的请求与返回格式。
+主要描述了本服务提供的接口的请求与返回格式，详细情况参考文档内容：📄 [API Doc](docs/api.md)
 
-### 📘 Python 轻量级后端开发指南
+### Python 轻量级后端开发指南
 
-[docs/lightweight_backend_development.md](docs/lightweight_backend_development.md): 涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面。
-
----
-
-## 相关项目
-
-### 前端项目
-
-* ✅ [Renda Zhang Web](https://github.com/RendaZhang/rendazhang.github.io)
-
-### Nginx 项目
-
-* ✅ [Nginx Conf](https://github.com/RendaZhang/nginx-conf)
+涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [Light Weight Backend Development](docs/lightweight_backend_development.md)
 
 ---
 
@@ -212,7 +214,7 @@ export MAX_HISTORY=6
 ## 📬 联系方式
 
 * 联系人：张人大（Renda Zhang）
-* 邮箱：[952402967@qq.com](mailto:952402967@qq.com)
-* 个人网站：[https://rendazhang.com](https://rendazhang.com)
+* 📧 邮箱：[952402967@qq.com](mailto:952402967@qq.com)
+* 🌐 个人网站：[https://rendazhang.com](https://rendazhang.com)
 
 > ⏰ **Maintainer**：@Renda — 如果本项目对你有帮助，请不要忘了点亮 ⭐️ Star 支持我们！

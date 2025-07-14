@@ -13,7 +13,7 @@
 
 # Python 轻量级后端开发指南
 
-* **Last Updated:** July 14, 2025, 00:30 (UTC+8)
+* **Last Updated:** July 14, 2025,18:30 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
 
 ---
@@ -86,7 +86,7 @@ Redis 是基于内存的存储系统，如果会话数据不断积累，可能�
 - 基于数量的清理：使用 Redis 的 LPUSH 和 LTRIM 命令来维护一个固定长度的列表。
 - 混合策略：先删除过期的会话，再保留最近的 N 个会话。
 
-虽然 Redis 是高性能选择，但考虑到服务器内存有限，如果使用 Redis，具体操作步骤可以参考 Nginx 项目的文档内容：[安装并配置 Redis](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%AE%89%E8%A3%85%E5%B9%B6%E9%85%8D%E7%BD%AE-redis)
+虽然 Redis 是高性能选择，但考虑到服务器内存有限，如果使用 Redis，具体操作步骤请参考 Nginx 项目的文档内容：📄 [安装并配置 Redis](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%AE%89%E8%A3%85%E5%B9%B6%E9%85%8D%E7%BD%AE-redis)
 
 ### 方案 C: SQLite 数据库（轻量级数据库）
 
