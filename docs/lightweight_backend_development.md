@@ -13,7 +13,7 @@
 
 # Python 轻量级后端开发指南
 
-* **Last Updated:** July 14, 2025,18:30 (UTC+8)
+* **Last Updated:** July 15, 2025, 18:30 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
 
 ---

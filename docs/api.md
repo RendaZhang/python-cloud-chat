@@ -14,7 +14,7 @@
 
 # API 文档
 
-* **Last Updated:** July 14, 2025, 00:05 (UTC+8)
+* **Last Updated:** July 15, 2025, 00:05 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
 
 ---
@@ -33,12 +33,9 @@
    支持 DALL·E 3 和阿里通义万相图像生成模型
 
 3. **技术特性**
-   - 所有对话接口支持**流式输出**
-   - 多轮对话状态管理（默认保留最近6轮）
-   - 全接口强制验证 `Referer` 头（仅允许 `rendazhang.com` 域名）
-   - 响应内容动态缓存控制
-
-> 重要安全要求：所有接口必须携带 `Referer: https://www.rendazhang.com` 请求头
+    - 所有对话接口支持**流式输出**
+    - 多轮对话状态管理（默认保留最近6轮）
+    - 响应内容动态缓存控制
 
 ---
 
@@ -46,7 +43,7 @@
 
 - **功能**：与 AI 模型进行流式对话。
 
-- **请求头**：`Content-Type: application/json`，`Referer: https://www.rendazhang.com`。
+ - **请求头**：`Content-Type: application/json`。
 
 - **请求体示例**：
 
@@ -61,9 +58,8 @@
 - **调用示例**：
 
 ```bash
-curl -X POST https://www.rendazhang.com/cloudchat/chat \
+ curl -X POST https://www.rendazhang.com/cloudchat/chat \
      -H "Content-Type: application/json" \
-     -H "Referer: https://rendazhang.com" \
      -d '{"message": "Hello from curl!"}'
 ```
 
@@ -86,7 +82,7 @@ curl -X POST https://www.rendazhang.com/cloudchat/chat \
 
 - **功能**：根据提示词生成图像。
 
-- **请求头**：`Content-Type: application/json`，`Referer: https://www.rendazhang.com`。
+ - **请求头**：`Content-Type: application/json`。
 
 - **请求体示例**：
 
@@ -101,9 +97,8 @@ curl -X POST https://www.rendazhang.com/cloudchat/chat \
 - **调用示例**：
 
 ```bash
-curl -X POST https://www.rendazhang.com/cloudchat/generate_image \
+ curl -X POST https://www.rendazhang.com/cloudchat/generate_image \
      -H "Content-Type: application/json" \
-     -H "Referer: https://www.rendazhang.com" \
      -d '{"prompt": "一只在阳光下打盹的橘猫"}'
 ```
 
@@ -119,7 +114,7 @@ curl -X POST https://www.rendazhang.com/cloudchat/generate_image \
 
 - **功能**：使用 DeepSeek Chat 模型进行多轮流式对话，历史消息存储在 Redis 中。
 
-- **请求头**：`Content-Type: application/json`，`Referer: https://www.rendazhang.com`。
+ - **请求头**：`Content-Type: application/json`。
 
 - **请求体示例**：
 
@@ -134,9 +129,8 @@ curl -X POST https://www.rendazhang.com/cloudchat/generate_image \
 - **调用示例**：
 
 ```bash
-curl -X POST https://www.rendazhang.com/cloudchat/deepseek_chat \
+ curl -X POST https://www.rendazhang.com/cloudchat/deepseek_chat \
      -H "Content-Type: application/json" \
-     -H "Referer: https://www.rendazhang.com" \
      -d '{"message": "你好，DeepSeek，这是测试，请简单地用几个英文单词回答我"}'
 ```
 
@@ -166,7 +160,7 @@ curl -X POST https://www.rendazhang.com/cloudchat/deepseek_chat \
 
 - **功能**：清空当前用户会话中的对话历史。
 
-- **请求头**：`Content-Type: application/json`，`Referer: https://www.rendazhang.com`。
+ - **请求头**：`Content-Type: application/json`。
 
 - **请求体示例**：空对象即可。
 
@@ -175,9 +169,8 @@ curl -X POST https://www.rendazhang.com/cloudchat/deepseek_chat \
 - **调用示例**：
 
 ```bash
-curl -X POST https://www.rendazhang.com/cloudchat/reset_chat \
+ curl -X POST https://www.rendazhang.com/cloudchat/reset_chat \
      -H "Content-Type: application/json" \
-     -H "Referer: https://www.rendazhang.com" \
      -d '{}'
 ```
 
@@ -193,14 +186,14 @@ curl -X POST https://www.rendazhang.com/cloudchat/reset_chat \
 
 - **功能**：返回动态时间戳和随机 ID，用于测试 Nginx 缓存及 `X-Cache-Status` 头。
 
-- **请求头**：`Referer: https://www.rendazhang.com`。
+ - **请求头**：无特殊要求。
 
 - **返回**：如果成功会返回 timestamp 和 request_id 信息。
 
 - **调用示例**：
 
 ```bash
-curl https://www.rendazhang.com/cloudchat/test -H "Referer: https://www.rendazhang.com"
+ curl https://www.rendazhang.com/cloudchat/test
 ```
 
 - **返回示例**：
