@@ -6,8 +6,7 @@
   - [文档说明](#%E6%96%87%E6%A1%A3%E8%AF%B4%E6%98%8E)
     - [BUG 记录格式要求](#bug-%E8%AE%B0%E5%BD%95%E6%A0%BC%E5%BC%8F%E8%A6%81%E6%B1%82)
     - [问题状态](#%E9%97%AE%E9%A2%98%E7%8A%B6%E6%80%81)
-  - [BUG 详情](#bug-%E8%AF%A6%E6%83%85)
-    - [BUG-001: 示例 Bug](#bug-001-%E7%A4%BA%E4%BE%8B-bug)
+  - [BUG-001: 示例 Bug](#bug-001-%E7%A4%BA%E4%BE%8B-bug)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -49,9 +48,7 @@
 
 ---
 
-## BUG 详情
-
-### BUG-001: 示例 Bug
+## BUG-001: 示例 Bug
 
 - **发现日期**：2025-07-17
 - **重现环境**：Python 3.12, Ubuntu 24

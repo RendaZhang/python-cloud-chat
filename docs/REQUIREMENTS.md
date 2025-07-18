@@ -41,6 +41,7 @@ Python Cloud Chat 是一个基于 Flask 的轻量级后端服务，提供 AI 对
 
 ## 🔧 技术需求
 
+- [x] pre-commit 自动执行 doctoc 更新文档目录
 - [ ] 完善单元测试并集成到 CI
 - [ ] 实现简单的 API 限流和身份验证
 - [ ] Docker 化部署与环境配置

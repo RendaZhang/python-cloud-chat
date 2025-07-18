@@ -14,7 +14,7 @@
     - [Python 轻量级后端开发指南](#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
     - [故障排查及 BUG 追踪](#%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%8F%8A-bug-%E8%BF%BD%E8%B8%AA)
     - [开发需求](#%E5%BC%80%E5%8F%91%E9%9C%80%E6%B1%82)
-  - [🙌 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
+  - [🤝 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
   - [🔐 License](#-license)
   - [📬 联系方式](#-%E8%81%94%E7%B3%BB%E6%96%B9%E5%BC%8F)
 
@@ -47,13 +47,13 @@
 
 这是一个基于 Flask 的轻量级 Python Web 服务，实现了以下功能。
 
-- 🤖 与 AI 模型实时对话
-- 🖼️ 基于 Stable Diffusion 的 AI 图像生成
-- ✅ 支持 DashScope / OpenAI / Deepseek API Key 环境变量配置
-- 💻 支持 macOS / Windows / Linux 开发环境
-- 🌐 可与前端页面或第三方应用对接
-- 🚀 使用 Gunicorn + Gevent 部署，支持高并发流式响应
-- 🗄️ 使用 Redis 存储会话，DeepSeek 聊天接口支持多轮流式对话
+- 与 AI 模型实时对话
+- 基于 Stable Diffusion 的 AI 图像生成
+- 支持 DashScope / OpenAI / Deepseek API Key 环境变量配置
+- 支持 macOS / Windows / Linux 开发环境
+- 可与前端页面或第三方应用对接
+- 使用 Gunicorn + Gevent 部署，支持高并发流式响应
+- 使用 Redis 存储会话，DeepSeek 聊天接口支持多轮流式对话
 
 ---
 
@@ -173,21 +173,26 @@ BUG 记录和修复状态请查看文档：📄 [Troubleshooting](https://github
 
 ---
 
-## 🙌 贡献指南
+## 🤝 贡献指南
 
-1. Fork 本仓库并克隆到本地
-2. 安装依赖及 **pre-commit**
+- Fork & clone this repo.
+- 进入虚拟环境：
    ```bash
-   pip install pre-commit black ruff
+   # 如果还没安装虚拟环境，执行命令：python -m venv venv
+   source venv/bin/activate
+   ```
+- 安装依赖并启用 **pre-commit**:
+   ```bash
+   pip install pre-commit
    pre-commit install
    ```
-3. 新建分支 `feat_xxx` 开发并提交
-4. 提交前可手动运行：
-   ```bash
-   pre-commit run --all-files
-   ```
-5. 提交 Pull Request，我们会尽快审核
-   > ✅ 所有提交必须通过 pre-commit 检查
+- 在每次提交前，钩子会自动运行，并执行 `doctoc` 更新 README 和 docs 目录下的文件。
+- 你也可以手动触发：
+  ```bash
+  pre-commit run --all-files
+  ```
+
+> ✅ 所有提交必须通过 pre-commit 检查；CI 会阻止不符合规范的 PR。
 
 ---
 
