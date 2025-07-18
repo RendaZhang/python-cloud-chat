@@ -2,32 +2,21 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
-- [Python Cloud Chat · 云端 AI 聊天与图像生成服务](#python-cloud-chat--云端-ai-聊天与图像生成服务)
-  - [项目简介](#项目简介)
-  - [项目结构与技术栈](#项目结构与技术栈)
-    - [Gunicorn + Gevent 的优势](#gunicorn--gevent-的优势)
-  - [在 Ubuntu 部署与测试](#在-ubuntu-部署与测试)
-  - [关联项目](#关联项目)
-    - [前端项目](#前端项目)
-    - [Nginx 项目](#nginx-项目)
-  - [安装和部署指南](#安装和部署指南)
-    - [1. 克隆项目](#1-克隆项目)
-    - [2. 创建并激活虚拟环境（推荐）](#2-创建并激活虚拟环境推荐)
-      - [macOS/Linux:](#macoslinux)
-      - [Windows PowerShell:](#windows-powershell)
-    - [3. 安装依赖](#3-安装依赖)
-    - [4. 设置 API 密钥（推荐使用环境变量）](#4-设置-api-密钥推荐使用环境变量)
-      - [macOS/Linux:](#macoslinux-1)
-      - [Windows PowerShell:](#windows-powershell-1)
-    - [5. 启动服务](#5-启动服务)
-  - [项目文件说明](#项目文件说明)
-    - [接口文档](#接口文档)
-    - [Python 轻量级后端开发指南](#python-轻量级后端开发指南)
-    - [故障排查及 BUG 追踪](#故障排查及-bug-追踪)
-    - [开发需求](#开发需求)
-  - [🙌 贡献指南](#-贡献指南)
+- [Python Cloud Chat · 云端 AI 聊天与图像生成服务](#python-cloud-chat-%C2%B7-%E4%BA%91%E7%AB%AF-ai-%E8%81%8A%E5%A4%A9%E4%B8%8E%E5%9B%BE%E5%83%8F%E7%94%9F%E6%88%90%E6%9C%8D%E5%8A%A1)
+  - [简介](#%E7%AE%80%E4%BB%8B)
+    - [前端项目](#%E5%89%8D%E7%AB%AF%E9%A1%B9%E7%9B%AE)
+    - [Nginx 项目](#nginx-%E9%A1%B9%E7%9B%AE)
+  - [功能描述](#%E5%8A%9F%E8%83%BD%E6%8F%8F%E8%BF%B0)
+  - [技术栈](#%E6%8A%80%E6%9C%AF%E6%A0%88)
+  - [安装和部署指南](#%E5%AE%89%E8%A3%85%E5%92%8C%E9%83%A8%E7%BD%B2%E6%8C%87%E5%8D%97)
+  - [项目文件说明](#%E9%A1%B9%E7%9B%AE%E6%96%87%E4%BB%B6%E8%AF%B4%E6%98%8E)
+    - [接口文档](#%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
+    - [Python 轻量级后端开发指南](#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
+    - [故障排查及 BUG 追踪](#%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%8F%8A-bug-%E8%BF%BD%E8%B8%AA)
+    - [开发需求](#%E5%BC%80%E5%8F%91%E9%9C%80%E6%B1%82)
+  - [🙌 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
   - [🔐 License](#-license)
-  - [📬 联系方式](#-联系方式)
+  - [📬 联系方式](#-%E8%81%94%E7%B3%BB%E6%96%B9%E5%BC%8F)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -38,9 +27,23 @@
 
 ---
 
-## 项目简介
+## 简介
 
 项目目前在 Ubuntu 24 系统的阿里云香港轻量级服务器（2 vCPUs、1 GB RAM、40 GB SSD）上部署并测试。
+
+如下是关联项目。
+
+### 前端项目
+
+具体情况和网站页面功能描述请参考前端项目：📁 [Renda Zhang Web](https://github.com/RendaZhang/rendazhang)
+
+### Nginx 项目
+
+具体情况和项目部署请参考 Nginx 项目：📁 [Nginx Conf](https://github.com/RendaZhang/nginx-conf)
+
+---
+
+## 功能描述
 
 这是一个基于 Flask 的轻量级 Python Web 服务，实现了以下功能。
 
@@ -54,7 +57,7 @@
 
 ---
 
-## 项目结构与技术栈
+## 技术栈
 
 - **后端框架**：Flask 3.1.1
 - **核心依赖**：
@@ -67,106 +70,79 @@
 
 ---
 
-### Gunicorn + Gevent 的优势
-
-1. **并发处理能力**：协程模型使小内存服务器也能稳定处理流式请求。
-2. **资源效率**：相比多线程/多进程更节省内存，适合 1GB 内存机器。
-3. **稳定性**：Gunicorn 能自动管理工作进程并在崩溃后重启。
-4. **流式响应优化**：Gevent 优化长连接，避免客户端超时。
-
----
-
-## 在 Ubuntu 部署与测试
+## 安装和部署指南
 
 在 Ubuntu 系统上安装并配置 Redis，并通过 systemd 部署和管理后端 CloudChat 服务。
 
-具体步骤请参考 Nginx 项目的文档内容：📄 [后端迁移](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%90%8E%E7%AB%AF%E8%BF%81%E7%A7%BB)
-
----
-
-## 关联项目
-
-### 前端项目
-
-具体情况和网站页面功能描述请参考前端项目：📁 [Renda Zhang Web](https://github.com/RendaZhang/rendazhang)
-
-### Nginx 项目
-
-具体情况和项目部署请参考 Nginx 项目：📁 [Nginx Conf](https://github.com/RendaZhang/nginx-conf)
-
----
-
-## 安装和部署指南
-
 具体的操作步骤请参考 Nginx 项目的文档内容：📄 [后端迁移](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%90%8E%E7%AB%AF%E8%BF%81%E7%A7%BB)
 
-如下是通用的基本步骤描述。
+如果要在 MAC 或者 Windowns 环境下安装和部署，请参考如下的基本步骤描述。
 
-### 1. 克隆项目
+1. 克隆项目
 
-```bash
-git clone https://gitee.com/RendaZhang/python-cloud-chat.git
-cd python-cloud-chat
-```
+    ```bash
+    git clone https://gitee.com/RendaZhang/python-cloud-chat.git
+    cd python-cloud-chat
+    ```
 
-### 2. 创建并激活虚拟环境（推荐）
+2. 创建并激活虚拟环境（推荐）
 
-#### macOS/Linux:
+    macOS/Linux:
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
 
-#### Windows PowerShell:
+    Windows PowerShell:
 
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
+    ```powershell
+    python -m venv venv
+    .\venv\Scripts\Activate.ps1
+    ```
 
-### 3. 安装依赖
+3. 安装依赖
 
-```bash
-pip install -r requirements.txt
-```
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-### 4. 设置 API 密钥（推荐使用环境变量）
+4. 设置 API 密钥（推荐使用环境变量）
 
-#### macOS/Linux:
+    macOS/Linux:
 
-```bash
-export DASHSCOPE_API_KEY=your_dashscope_api_key
-export DEEPSEEK_API_KEY=your_deepseek_api_key
-export REDIS_PASSWORD=your_redis_pass
-export FLASK_SECRET_KEY=your_flask_secret_key
-```
+    ```bash
+    export DASHSCOPE_API_KEY=your_dashscope_api_key
+    export DEEPSEEK_API_KEY=your_deepseek_api_key
+    export REDIS_PASSWORD=your_redis_pass
+    export FLASK_SECRET_KEY=your_flask_secret_key
+    ```
 
-#### Windows PowerShell:
+    Windows PowerShell:
 
-```powershell
-$env:DASHSCOPE_API_KEY="your_dashscope_api_key"
-$env:DEEPSEEK_API_KEY="your_deepseek_api_key"
-$env:REDIS_PASSWORD="your_redis_pass"
-$env:FLASK_SECRET_KEY="your_flask_secret_key"
-```
+    ```powershell
+    $env:DASHSCOPE_API_KEY="your_dashscope_api_key"
+    $env:DEEPSEEK_API_KEY="your_deepseek_api_key"
+    $env:REDIS_PASSWORD="your_redis_pass"
+    $env:FLASK_SECRET_KEY="your_flask_secret_key"
+    ```
 
-或直接添加到 `activate` 文件中。
+    或直接添加到 `activate` 文件中。
 
-可选的环境变量示例：
+    可选的环境变量示例：
 
-```bash
-# 自定义模型或会话配置
-export QWEN_MODEL="qwen-turbo-2025-04-28"
-export SD_MODEL="stable-diffusion-v1.5"
-export MAX_HISTORY=6
-```
+    ```bash
+    # 自定义模型或会话配置
+    export QWEN_MODEL="qwen-turbo-2025-04-28"
+    export SD_MODEL="stable-diffusion-v1.5"
+    export MAX_HISTORY=6
+    ```
 
-### 5. 启动服务
+5. 启动服务
 
-默认使用 **Gunicorn + Gevent** 作为 WSGI 服务器。
+    默认使用 **Gunicorn + Gevent** 作为 WSGI 服务器。
 
-启动后 Gunicorn 服务在 `0.0.0.0:5000` 监听。
+    启动后 Gunicorn 服务在 `0.0.0.0:5000` 监听。
 
 ---
 
@@ -217,7 +193,7 @@ BUG 记录和修复状态请查看文档：📄 [Troubleshooting](https://github
 
 ## 🔐 License
 
-本项目采用 **MIT 协议** 开源发布。这意味着你可以自由地使用、修改并重新发布本仓库的内容，只需在分发时附上原始许可证声明。
+本项目以 **MIT License** 发布，你可以自由使用与修改。请在分发时保留原始许可证声明。
 
 ---
 
@@ -225,6 +201,5 @@ BUG 记录和修复状态请查看文档：📄 [Troubleshooting](https://github
 
 * 联系人：张人大（Renda Zhang）
 * 📧 邮箱：[952402967@qq.com](mailto:952402967@qq.com)
-* 🌐 个人网站：[https://rendazhang.com](https://rendazhang.com)
 
 > ⏰ **Maintainer**：@Renda — 如果本项目对你有帮助，请不要忘了点亮 ⭐️ Star 支持我们！

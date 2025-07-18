@@ -8,6 +8,7 @@
     - [方案 A: 文件系统存储（最简单，零依赖）](#%E6%96%B9%E6%A1%88-a-%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F%E5%AD%98%E5%82%A8%E6%9C%80%E7%AE%80%E5%8D%95%E9%9B%B6%E4%BE%9D%E8%B5%96)
     - [方案 B: Redis 存储（更高效，但需要额外服务）](#%E6%96%B9%E6%A1%88-b-redis-%E5%AD%98%E5%82%A8%E6%9B%B4%E9%AB%98%E6%95%88%E4%BD%86%E9%9C%80%E8%A6%81%E9%A2%9D%E5%A4%96%E6%9C%8D%E5%8A%A1)
     - [方案 C: SQLite 数据库（轻量级数据库）](#%E6%96%B9%E6%A1%88-c-sqlite-%E6%95%B0%E6%8D%AE%E5%BA%93%E8%BD%BB%E9%87%8F%E7%BA%A7%E6%95%B0%E6%8D%AE%E5%BA%93)
+  - [使用 Gunicorn + Gevent 作为 WSGI 服务器](#%E4%BD%BF%E7%94%A8-gunicorn--gevent-%E4%BD%9C%E4%B8%BA-wsgi-%E6%9C%8D%E5%8A%A1%E5%99%A8)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -140,3 +141,14 @@ cursor.execute('''
 conn.commit()
 conn.close()
 ```
+
+---
+
+## 使用 Gunicorn + Gevent 作为 WSGI 服务器
+
+Gunicorn + Gevent 的优势
+
+1. **并发处理能力**：协程模型使小内存服务器也能稳定处理流式请求。
+2. **资源效率**：相比多线程/多进程更节省内存，适合小内存（比如 1GB RAM）机器。
+3. **稳定性**：Gunicorn 能自动管理工作进程并在崩溃后重启。
+4. **流式响应优化**：Gevent 优化长连接，避免客户端超时。
