@@ -159,16 +159,16 @@
 
 ### 接口文档
 
-主要描述了本服务提供的接口的请求与返回格式，详细情况参考文档内容：📄 [API Doc](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/API.md#api-%E6%96%87%E6%A1%A3)
+主要描述了本服务提供的接口的请求与返回格式，详细情况参考文档内容：📄 [API 文档](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/API.md#api-%E6%96%87%E6%A1%A3)
 
 ### Python 轻量级后端开发指南
 
-涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [Light Weight Backend Development](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/LIGHTWEIGHT_BACKEND_DEVELOPMENT.md)
+涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [轻量级后端开发指南](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/LIGHTWEIGHT_BACKEND_DEVELOPMENT.md#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
 
 
 ### 故障排查及 BUG 追踪
 
-BUG 记录和修复状态请查看文档：📄 [Troubleshooting](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/TROUBLESHOOTING.md#%E5%90%8E%E7%AB%AF-bug-%E8%B7%9F%E8%B8%AA%E6%95%B0%E6%8D%AE%E5%BA%93)
+BUG 记录和修复状态请查看文档：📄 [后端 BUG 跟踪数据库](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/TROUBLESHOOTING.md#%E5%90%8E%E7%AB%AF-bug-%E8%B7%9F%E8%B8%AA%E6%95%B0%E6%8D%AE%E5%BA%93)
 
 ### 开发需求
 
