@@ -159,11 +159,11 @@
 
 ### 接口文档
 
-主要描述了本服务提供的接口的请求与返回格式，详细情况参考文档内容：📄 [API Doc](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/api.md#api-%E6%96%87%E6%A1%A3)
+主要描述了本服务提供的接口的请求与返回格式，详细情况参考文档内容：📄 [API Doc](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/API.md#api-%E6%96%87%E6%A1%A3)
 
 ### Python 轻量级后端开发指南
 
-涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [Light Weight Backend Development](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/lightweight_backend_development.md)
+涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [Light Weight Backend Development](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/LIGHTWEIGHT_BACKEND_DEVELOPMENT.md)
 
 
 ### 故障排查及 BUG 追踪
