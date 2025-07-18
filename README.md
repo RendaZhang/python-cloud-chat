@@ -2,7 +2,7 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
-- [Python Cloud Chat · 云端 AI 聊天与图像生成服务](#python-cloud-chat-%C2%B7-%E4%BA%91%E7%AB%AF-ai-%E8%81%8A%E5%A4%A9%E4%B8%8E%E5%9B%BE%E5%83%8F%E7%94%9F%E6%88%90%E6%9C%8D%E5%8A%A1)
+- [Python 后端服务](#python-%E5%90%8E%E7%AB%AF%E6%9C%8D%E5%8A%A1)
   - [介绍](#%E4%BB%8B%E7%BB%8D)
     - [功能描述](#%E5%8A%9F%E8%83%BD%E6%8F%8F%E8%BF%B0)
     - [技术栈](#%E6%8A%80%E6%9C%AF%E6%A0%88)
@@ -20,7 +20,7 @@
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-# Python Cloud Chat · 云端 AI 聊天与图像生成服务
+# Python 后端服务
 
 * **Last Updated:** July 18, 2025, 22:40 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
@@ -189,7 +189,8 @@ BUG 记录和修复状态请查看文档：📄 [Troubleshooting](https://github
    pip install pre-commit
    pre-commit install
    ```
-- 在每次提交前，钩子会自动运行，并执行 `doctoc` (if available) 更新 README 和 docs 目录下的文件。
+- 在每次提交前，钩子会自动运行。
+- README 和 docs 下的文档会自动更新 Doctoc 目录（若本地未安装则跳过）。
 - 你也可以手动触发：
   ```bash
   pre-commit run --all-files
