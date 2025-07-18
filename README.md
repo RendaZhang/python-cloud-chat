@@ -32,7 +32,7 @@
 
 # Python Cloud Chat · 云端 AI 聊天与图像生成服务
 
-* **Last Updated:** July 15, 2025, 18:30 (UTC+8)
+* **Last Updated:** July 18, 2025, 15:30 (UTC+8)
 * **作者:** 张人大（Renda Zhang）
 
 ---
@@ -87,7 +87,7 @@
 
 ### 前端项目
 
-具体情况和网站页面功能描述请参考前端项目：📁 [Renda Zhang Web](https://github.com/RendaZhang/rendazhang.github.io)
+具体情况和网站页面功能描述请参考前端项目：📁 [Renda Zhang Web](https://github.com/RendaZhang/rendazhang)
 
 ### Nginx 项目
 
