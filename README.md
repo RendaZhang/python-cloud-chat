@@ -24,6 +24,7 @@
     - [接口文档](#%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
     - [Python 轻量级后端开发指南](#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
     - [故障排查及 BUG 追踪](#%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%8F%8A-bug-%E8%BF%BD%E8%B8%AA)
+    - [开发需求](#%E5%BC%80%E5%8F%91%E9%9C%80%E6%B1%82)
   - [🙌 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
   - [🔐 License](#-license)
   - [📬 联系方式](#-%E8%81%94%E7%B3%BB%E6%96%B9%E5%BC%8F)
@@ -179,16 +180,20 @@ export MAX_HISTORY=6
 
 ### 接口文档
 
-主要描述了本服务提供的接口的请求与返回格式，详细情况参考文档内容：📄 [API Doc](docs/api.md)
+主要描述了本服务提供的接口的请求与返回格式，详细情况参考文档内容：📄 [API Doc](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/api.md#api-%E6%96%87%E6%A1%A3)
 
 ### Python 轻量级后端开发指南
 
-涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [Light Weight Backend Development](docs/lightweight_backend_development.md)
+涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [Light Weight Backend Development](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/lightweight_backend_development.md)
 
 
 ### 故障排查及 BUG 追踪
 
-BUG 记录和修复状态请查看文档：📄 [Troubleshooting](docs/TROUBLESHOOTING.md)
+BUG 记录和修复状态请查看文档：📄 [Troubleshooting](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/TROUBLESHOOTING.md#%E5%90%8E%E7%AB%AF-bug-%E8%B7%9F%E8%B8%AA%E6%95%B0%E6%8D%AE%E5%BA%93)
+
+### 开发需求
+
+详情参考文档：📄 [需求文档](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/REQUIREMENTS.md#%E9%A1%B9%E7%9B%AE%E9%9C%80%E6%B1%82%E6%B8%85%E5%8D%95)
 
 ---
 
