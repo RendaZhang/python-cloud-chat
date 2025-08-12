@@ -149,11 +149,9 @@
 
 * **Body**：`{ "identifier": "alice@example.com" }`
 * **响应**：
-
   * **始终** `200 {"ok": true}`（防枚举）；生产环境通过邮件发送重置链接。
   * 重置链接示例（15 分钟有效）：
-
-    * `https://www.rendazhang.com/cloudchat/reset_password?token=<TOKEN>`
+    * `https://www.rendazhang.com/reset_password?token=<TOKEN>`
 
 ### 2.6 重置密码 — `POST /auth/password/reset`
 
@@ -223,7 +221,7 @@
 
 ### 4.3 忘记/重置密码页
 
-* **页面**：`/cloudchat/reset_password`（静态路由）。
+* **页面**：`/reset_password`。
 * **流程**：
 
   1. 从 `location.search` 解析 `token`。

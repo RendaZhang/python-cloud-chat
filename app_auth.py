@@ -320,8 +320,8 @@ def password_forgot():
                         base = os.getenv("FRONTEND_BASE_URL") or (
                             request.host_url.rstrip("/")
                         )
-                        # 前端路由示例：/cloudchat/reset_password?token=...
-                        reset_link = f"{base}/cloudchat/reset_password?token={token}"
+                        # 前端路由示例：/reset_password?token=...
+                        reset_link = f"{base}/reset_password?token={token}"
                         send_reset_email(
                             user.email, token, reset_link, PWRESET_TOKEN_TTL
                         )
