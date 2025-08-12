@@ -19,6 +19,7 @@ from flask import (
     stream_with_context,
 )
 from flask_session import Session
+from app_auth import auth as auth_bp
 
 app = Flask(__name__)
 
@@ -59,6 +60,10 @@ app.config["SESSION_REDIS"] = redis.Redis(
     socket_timeout=REDIS_TIMEOUT,
 )
 app.config["PERMANENT_SESSION_LIFETIME"] = SESSION_EXPIRE  # 1小时过期
+
+# 登录和注册接口
+app.register_blueprint(auth_bp)
+
 Session(app)
 
 
