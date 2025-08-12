@@ -1,16 +1,16 @@
+"""Flask web service for Authetication"""
+
 from __future__ import annotations
+from datetime import datetime, timezone
+from uuid import uuid4
+from argon2 import PasswordHasher
+from flask import Blueprint, request, jsonify, make_response
+from db import get_session
+from models import User, Credential
 import os
 import re
 import secrets
-from datetime import datetime, timezone
-from uuid import uuid4
-
 import redis
-from argon2 import PasswordHasher
-from flask import Blueprint, request, jsonify, make_response
-
-from db import get_session
-from models import User, Credential
 
 # ---- 配置 ----
 COOKIE_NAME = "session"
@@ -34,7 +34,7 @@ redis_client = redis.Redis(
 )
 
 ph = PasswordHasher()
-auth = Blueprint("auth", __name__, url_prefix="/cloudchat/auth")
+auth = Blueprint("auth", __name__, url_prefix="/auth")
 
 # ---- 工具 ----
 _email_re = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -81,8 +81,6 @@ def _get_user_from_cookie():
 
 
 # ---- 路由 ----
-
-
 # 注册接口会返回 409 表示邮箱/手机号已被占用（注册场景允许提示唯一性冲突）。
 @auth.post("/register")
 def register():
@@ -222,7 +220,7 @@ def me():
     )
 
 
-# 可选：健康检查（检查依赖连通性）
+# 健康检查（检查依赖连通性）
 @auth.get("/healthz")
 def healthz():
     try:

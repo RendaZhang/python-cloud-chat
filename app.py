@@ -1,12 +1,5 @@
-"""Flask web service for Qwen chat and Stable Diffusion image generation."""
+"""Flask web service for Deepseek chat"""
 
-import json
-import os
-import uuid
-import time
-import openai
-import psutil
-import redis
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import (
     Flask,
@@ -18,15 +11,24 @@ from flask import (
 )
 from flask_session import Session
 from app_auth import auth as auth_bp
+import json
+import os
+import uuid
+import time
+import openai
+import psutil
+import redis
 
 app = Flask(__name__)
 
 # ===== 环境变量配置 =====
+
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "default-secret-key")
 deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
 redis_password = os.getenv("REDIS_PASSWORD", "")
 
 # ===== 全局可配置常量 =====
+
 # 系统提示语，可根据需要修改角色设定
 DEFAULT_SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "请你扮演张人大，英文名 Renda Zhang")
 # Qwen 聊天模型名称
@@ -46,7 +48,8 @@ REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
 REDIS_TIMEOUT = int(os.getenv("REDIS_TIMEOUT", 5))
-SESSION_EXPIRE = int(os.getenv("SESSION_EXPIRE", 3600))  # 会话过期时间（秒）
+# 会话过期时间（秒）1小时过期
+SESSION_EXPIRE = int(os.getenv("SESSION_EXPIRE", 3600))
 
 # ===== Redis 会话配置 =====
 app.config["SESSION_TYPE"] = "redis"
@@ -57,7 +60,7 @@ app.config["SESSION_REDIS"] = redis.Redis(
     db=REDIS_DB,
     socket_timeout=REDIS_TIMEOUT,
 )
-app.config["PERMANENT_SESSION_LIFETIME"] = SESSION_EXPIRE  # 1小时过期
+app.config["PERMANENT_SESSION_LIFETIME"] = SESSION_EXPIRE
 
 # 登录和注册接口
 app.register_blueprint(auth_bp)
@@ -153,7 +156,7 @@ def monitor_resources():
         )
 
         if mem.percent > 80:
-            app.logger.warning("⚠️ 系统内存使用过高!")
+            app.logger.warning("WARN: 系统内存使用过高!")
     except Exception as e:
         app.logger.error(f"监控错误: {str(e)}")
 
