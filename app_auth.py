@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 from argon2 import PasswordHasher
-from flask import Blueprint, request, jsonify, make_response
+from flask import Blueprint, request, jsonify, make_response, current_app
 from db import get_session
 from models import User, Credential
 import os
@@ -24,6 +24,8 @@ RATE_LIMIT_LOGIN_PER_10MIN = 10
 PWRESET_TOKEN_TTL = int(os.getenv("PWRESET_TOKEN_TTL", "900"))  # 15分钟
 # 生产请设为 0
 DEBUG_RETURN_RESET_TOKEN = os.getenv("DEBUG_RETURN_RESET_TOKEN", "0") == "1"
+# 重置后强制下线
+PWRESET_REVOKE_SESSIONS = os.getenv("PWRESET_REVOKE_SESSIONS", "1") == "1"
 
 # Redis 服务配置
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -95,6 +97,21 @@ def _get_user_from_cookie():
             return user_data, sid  # 返回提取的用户数据字典
     except Exception:
         return None, sid
+
+
+# 简单版“全端下线”：遍历 Redis sess:* 找到属于该用户的会话并删除（小规模下可用）
+def _revoke_user_sessions_simple(user_id: int) -> int:
+    count = 0
+    for key in redis_client.scan_iter("sess:*", count=100):
+        try:
+            uid = redis_client.get(key)
+            if uid and int(uid) == user_id:
+                redis_client.delete(key)
+                count += 1
+        except Exception:
+            # 忽略单条错误，保持健壮
+            pass
+    return count
 
 
 # ---- 路由 ----
@@ -238,16 +255,15 @@ def me():
 def password_forgot():
     """
     输入: { "identifier": "<email>" }
-    统一返回 200，避免枚举。开发期可返回 debug_token。
-    速率限制: 按 IP 与 identifier 双维度。
+    统一返回 200（防枚举）。开发期可返回 debug_token；生产请关闭并发送邮件。
     """
     data = request.get_json(silent=True) or {}
     identifier = (data.get("identifier") or "").strip().lower()
-    # 基础限速：每小时 IP 20 次，单 identifier 5 次
+
+    # 基础限速：每小时 IP 20 次 / 单 identifier 5 次
     if not _rate_limit(f"rl:pwf:ip:{_client_ip()}", 20, 3600) or not _rate_limit(
         f"rl:pwf:id:{identifier}", 5, 3600
     ):
-        # 同样返回 200，防枚举
         return jsonify({"ok": True}), 200
 
     token = None
@@ -261,10 +277,24 @@ def password_forgot():
                 .first()
             )
             if user:
-                # 生成一次性 token，Redis 保存 user_id
                 token = secrets.token_urlsafe(32)
                 redis_client.setex(f"pwreset:{token}", PWRESET_TOKEN_TTL, user.id)
-                # TODO: 生产环境在这里发送邮件/短信，而不是返回 token
+
+                # 生产：发邮件（构造前端重置链接）
+                if not DEBUG_RETURN_RESET_TOKEN:
+                    try:
+                        from mailer import send_reset_email
+
+                        base = os.getenv("FRONTEND_BASE_URL") or (
+                            request.host_url.rstrip("/")
+                        )
+                        # 前端路由示例：/cloudchat/reset-password?token=...
+                        reset_link = f"{base}/cloudchat/reset-password?token={token}"
+                        send_reset_email(
+                            user.email, token, reset_link, PWRESET_TOKEN_TTL
+                        )
+                    except Exception as e:
+                        current_app.logger.exception("send reset email failed: %s", e)
 
     resp = {"ok": True}
     if DEBUG_RETURN_RESET_TOKEN and token:
@@ -273,12 +303,10 @@ def password_forgot():
     return jsonify(resp), 200
 
 
+# 这个“简单版强制下线”会 扫描 sess:*，把映射到该用户的会话删掉，适合当前规模。
+# 后续要提效，再引入 user_sess:<uid> 反向索引。
 @auth.post("/password/reset")
 def password_reset():
-    """
-    输入: { "token": "...", "password": "NewStrongPass!" }
-    校验 token，更新 password 凭据。token 一次性使用。
-    """
     data = request.get_json(silent=True) or {}
     token = (data.get("token") or "").strip()
     new_pwd = data.get("password") or ""
@@ -287,7 +315,6 @@ def password_reset():
         return jsonify({"ok": False, "error": "Invalid token or weak password"}), 400
 
     key = f"pwreset:{token}"
-    # 尝试一次性取回 token（近似原子：读后删）
     pipe = redis_client.pipeline()
     pipe.get(key)
     pipe.delete(key)
@@ -296,7 +323,6 @@ def password_reset():
         return jsonify({"ok": False, "error": "Token invalid or expired"}), 400
 
     user_id = int(val)
-    # 更新/创建本地密码凭据
     with get_session() as s:
         from sqlalchemy import select
 
@@ -316,7 +342,12 @@ def password_reset():
             s.add(cred)
         cred.secret_hash = ph.hash(new_pwd)
 
-    return jsonify({"ok": True}), 200
+    revoked = 0
+    if PWRESET_REVOKE_SESSIONS:
+        revoked = _revoke_user_sessions_simple(user_id)
+
+    # 返回 revoked_sessions，便于在日志里观察效果
+    return jsonify({"ok": True, "revoked_sessions": int(revoked)}), 200
 
 
 # 健康检查（检查依赖连通性）
