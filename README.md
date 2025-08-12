@@ -17,7 +17,8 @@
   - [接口快速测试](#%E6%8E%A5%E5%8F%A3%E5%BF%AB%E9%80%9F%E6%B5%8B%E8%AF%95)
   - [故障排查](#%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5)
   - [安全基线](#%E5%AE%89%E5%85%A8%E5%9F%BA%E7%BA%BF)
-  - [变更日志（2025-08）](#%E5%8F%98%E6%9B%B4%E6%97%A5%E5%BF%972025-08)
+  - [变更日志](#%E5%8F%98%E6%9B%B4%E6%97%A5%E5%BF%97)
+    - [2025-08](#2025-08)
   - [项目文档](#%E9%A1%B9%E7%9B%AE%E6%96%87%E6%A1%A3)
     - [接口文档](#%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
     - [Python 轻量级后端开发指南](#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
@@ -211,13 +212,19 @@ curl -s https://www.rendazhang.com/cloudchat/auth/healthz
 
 ---
 
-## 变更日志（2025-08）
+## 变更日志
+
+### 2025-08
 
 * 新增：注册/登录/登出/`/me`；Redis 会话 Cookie `cc_auth`；应用 Cookie `cc_app`
 * 新增：`/auth/password/forgot|reset` + DirectMail 邮件发送；重置后强制下线（简单版）
 * 新增：`/auth/healthz` 同时探测 Redis + PostgreSQL
 * 更新：`DATABASE_URL` 指向 PgBouncer（`postgresql+psycopg2://...@127.0.0.1:6432/cloudchat`）
 * 更新：Nginx 对外统一前缀 `/cloudchat/*`；后端蓝图前缀 `/auth`
+
+> 目前，未登录用户是可以使用聊天相关的接口。
+>
+> 如需仅允许已登录用户使用聊天相关接口，可在后端给 `/deepseek_chat` 与 `/reset_chat` 添加对 `cc_auth` 的检查（例如读取并校验 `sess:<sid>`）。
 
 ---
 
