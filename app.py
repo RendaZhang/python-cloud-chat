@@ -61,6 +61,10 @@ app.config["SESSION_REDIS"] = redis.Redis(
     socket_timeout=REDIS_TIMEOUT,
 )
 app.config["PERMANENT_SESSION_LIFETIME"] = SESSION_EXPIRE
+app.config["SESSION_COOKIE_NAME"] = os.getenv("APP_SESSION_COOKIE_NAME", "cc_app")
+# 可保持和认证 Cookie 一致的安全属性
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("COOKIE_SECURE", "1") == "1"
 
 # 登录和注册接口
 app.register_blueprint(auth_bp)

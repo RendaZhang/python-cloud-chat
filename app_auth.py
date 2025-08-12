@@ -13,7 +13,8 @@ import secrets
 import redis
 
 # ---- 配置 ----
-COOKIE_NAME = "session"
+AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cc_auth")
+COOKIE_NAME = AUTH_COOKIE_NAME
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1") == "1"  # 若需在 HTTP 下本机测试，设为 0
 COOKIE_SAMESITE = "Lax"
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(7 * 24 * 3600)))
