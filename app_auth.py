@@ -75,7 +75,18 @@ def _get_user_from_cookie():
     try:
         with get_session() as s:
             user = s.get(User, int(uid))
-            return user, sid
+            if not user:
+                return None, sid
+            # 提前提取用户信息，避免在会话外访问 user 对象
+            user_data = {
+                "id": user.id,
+                "uid": user.uid,
+                "email": user.email,
+                "phone": user.phone,
+                "display_name": user.display_name,
+                "is_active": user.is_active,
+            }
+            return user_data, sid  # 返回提取的用户数据字典
     except Exception:
         return None, sid
 
@@ -203,21 +214,14 @@ def logout():
 
 @auth.get("/me")
 def me():
-    user, sid = _get_user_from_cookie()
-    if not user:
+    user_data, sid = _get_user_from_cookie()  # 接收用户数据字典
+    if not user_data:
         return jsonify({"ok": False, "error": "Unauthorized"}), 401
     return (
         jsonify(
             {
                 "ok": True,
-                "user": {
-                    "id": user.id,
-                    "uid": user.uid,
-                    "email": user.email,
-                    "phone": user.phone,
-                    "display_name": user.display_name,
-                    "is_active": user.is_active,
-                },
+                "user": user_data,  # 直接使用提取的用户数据
             }
         ),
         200,
