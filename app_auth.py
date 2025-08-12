@@ -15,10 +15,15 @@ import redis
 # ---- 配置 ----
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cc_auth")
 COOKIE_NAME = AUTH_COOKIE_NAME
-COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1") == "1"  # 若需在 HTTP 下本机测试，设为 0
+# 生产请设为 1；若需在 HTTP 下本机测试，设为 0
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1") == "1"
 COOKIE_SAMESITE = "Lax"
 SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(7 * 24 * 3600)))
 RATE_LIMIT_LOGIN_PER_10MIN = 10
+# 密码找回配置
+PWRESET_TOKEN_TTL = int(os.getenv("PWRESET_TOKEN_TTL", "900"))  # 15分钟
+# 生产请设为 0
+DEBUG_RETURN_RESET_TOKEN = os.getenv("DEBUG_RETURN_RESET_TOKEN", "0") == "1"
 
 # Redis 服务配置
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -227,6 +232,91 @@ def me():
         ),
         200,
     )
+
+
+@auth.post("/password/forgot")
+def password_forgot():
+    """
+    输入: { "identifier": "<email>" }
+    统一返回 200，避免枚举。开发期可返回 debug_token。
+    速率限制: 按 IP 与 identifier 双维度。
+    """
+    data = request.get_json(silent=True) or {}
+    identifier = (data.get("identifier") or "").strip().lower()
+    # 基础限速：每小时 IP 20 次，单 identifier 5 次
+    if not _rate_limit(f"rl:pwf:ip:{_client_ip()}", 20, 3600) or not _rate_limit(
+        f"rl:pwf:id:{identifier}", 5, 3600
+    ):
+        # 同样返回 200，防枚举
+        return jsonify({"ok": True}), 200
+
+    token = None
+    if identifier and _email_re.match(identifier):
+        from sqlalchemy import select
+
+        with get_session() as s:
+            user = (
+                s.execute(select(User).filter(User.email == identifier))
+                .scalars()
+                .first()
+            )
+            if user:
+                # 生成一次性 token，Redis 保存 user_id
+                token = secrets.token_urlsafe(32)
+                redis_client.setex(f"pwreset:{token}", PWRESET_TOKEN_TTL, user.id)
+                # TODO: 生产环境在这里发送邮件/短信，而不是返回 token
+
+    resp = {"ok": True}
+    if DEBUG_RETURN_RESET_TOKEN and token:
+        resp["debug_token"] = token
+        resp["debug_ttl"] = PWRESET_TOKEN_TTL
+    return jsonify(resp), 200
+
+
+@auth.post("/password/reset")
+def password_reset():
+    """
+    输入: { "token": "...", "password": "NewStrongPass!" }
+    校验 token，更新 password 凭据。token 一次性使用。
+    """
+    data = request.get_json(silent=True) or {}
+    token = (data.get("token") or "").strip()
+    new_pwd = data.get("password") or ""
+
+    if not token or len(new_pwd) < 8:
+        return jsonify({"ok": False, "error": "Invalid token or weak password"}), 400
+
+    key = f"pwreset:{token}"
+    # 尝试一次性取回 token（近似原子：读后删）
+    pipe = redis_client.pipeline()
+    pipe.get(key)
+    pipe.delete(key)
+    val, _ = pipe.execute()
+    if not val:
+        return jsonify({"ok": False, "error": "Token invalid or expired"}), 400
+
+    user_id = int(val)
+    # 更新/创建本地密码凭据
+    with get_session() as s:
+        from sqlalchemy import select
+
+        cred = (
+            s.execute(
+                select(Credential).filter(
+                    Credential.user_id == user_id, Credential.type == "password"
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if not cred:
+            cred = Credential(
+                user_id=user_id, type="password", created_at=datetime.now(timezone.utc)
+            )
+            s.add(cred)
+        cred.secret_hash = ph.hash(new_pwd)
+
+    return jsonify({"ok": True}), 200
 
 
 # 健康检查（检查依赖连通性）
