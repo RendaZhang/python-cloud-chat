@@ -6,10 +6,19 @@
   - [介绍](#%E4%BB%8B%E7%BB%8D)
     - [功能描述](#%E5%8A%9F%E8%83%BD%E6%8F%8F%E8%BF%B0)
     - [技术栈](#%E6%8A%80%E6%9C%AF%E6%A0%88)
-    - [前端项目](#%E5%89%8D%E7%AB%AF%E9%A1%B9%E7%9B%AE)
-    - [Nginx 项目](#nginx-%E9%A1%B9%E7%9B%AE)
-  - [安装和部署指南](#%E5%AE%89%E8%A3%85%E5%92%8C%E9%83%A8%E7%BD%B2%E6%8C%87%E5%8D%97)
-  - [项目文件说明](#%E9%A1%B9%E7%9B%AE%E6%96%87%E4%BB%B6%E8%AF%B4%E6%98%8E)
+    - [关联项目](#%E5%85%B3%E8%81%94%E9%A1%B9%E7%9B%AE)
+      - [前端：](#%E5%89%8D%E7%AB%AF)
+      - [Nginx：](#nginx)
+  - [安装与部署](#%E5%AE%89%E8%A3%85%E4%B8%8E%E9%83%A8%E7%BD%B2)
+    - [本地开发（macOS / Windows / Linux）](#%E6%9C%AC%E5%9C%B0%E5%BC%80%E5%8F%91macos--windows--linux)
+    - [生产部署（Ubuntu 24 + Nginx + systemd）](#%E7%94%9F%E4%BA%A7%E9%83%A8%E7%BD%B2ubuntu-24--nginx--systemd)
+  - [环境变量](#%E7%8E%AF%E5%A2%83%E5%8F%98%E9%87%8F)
+  - [数据库与会话](#%E6%95%B0%E6%8D%AE%E5%BA%93%E4%B8%8E%E4%BC%9A%E8%AF%9D)
+  - [接口快速测试](#%E6%8E%A5%E5%8F%A3%E5%BF%AB%E9%80%9F%E6%B5%8B%E8%AF%95)
+  - [故障排查](#%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5)
+  - [安全基线](#%E5%AE%89%E5%85%A8%E5%9F%BA%E7%BA%BF)
+  - [变更日志（2025-08）](#%E5%8F%98%E6%9B%B4%E6%97%A5%E5%BF%972025-08)
+  - [项目文档](#%E9%A1%B9%E7%9B%AE%E6%96%87%E6%A1%A3)
     - [接口文档](#%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
     - [Python 轻量级后端开发指南](#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
     - [故障排查及 BUG 追踪](#%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%8F%8A-bug-%E8%BF%BD%E8%B8%AA)
@@ -22,148 +31,197 @@
 
 # Python 后端服务
 
-* **Last Updated:** July 18, 2025, 22:40 (UTC+8)
-* **作者:** 张人大（Renda Zhang）
+- **作者**: 张人大（Renda Zhang）
+- **最后更新**: August 13, 2025, 04:30 (UTC+08:00)
 
 ---
 
 ## 介绍
 
-项目目前在 Ubuntu 24 系统的阿里云香港轻量级服务器（2 vCPUs + 1 GB RAM + 40 GB SSD）上部署并测试。
+本项目部署在阿里云轻量级服务器（Ubuntu 24，2 vCPU / 1 GB RAM / 40 GB SSD）并在线运行。服务通过 **Nginx 反向代理** 提供对外路径 `/cloudchat/*`，后端由 **Gunicorn + Gevent** 承载。
 
 ### 功能描述
 
-这是一个基于 Flask 的轻量级 Python Web 服务，实现了以下功能。
-
-- 与 AI 模型实时对话
-- 基于 Stable Diffusion 的 AI 图像生成
-- 支持 DashScope / OpenAI / Deepseek API Key 环境变量配置
-- 支持 macOS / Windows / Linux 开发环境
-- 可与前端页面或第三方应用对接
-- 使用 Gunicorn + Gevent 部署，支持高并发流式响应
-- 使用 Redis 存储会话，DeepSeek 聊天接口支持多轮流式对话
+* **用户认证**：注册、登录、登出、`/me`；Redis 会话（Cookie：`cc_auth`）。
+* **密码找回**：`/auth/password/forgot|reset`，邮件通过 **阿里云 DirectMail (SMTP)** 发送；重置后支持**会话强制下线（简单版）**。
+* **健康检查**：`/auth/healthz` 同时探测 Redis 与 PostgreSQL。
+* **聊天能力**：`/deepseek_chat`（流式 JSON 行）与 `reset_chat`；应用会话 Cookie：`cc_app`。
+* **路由前缀**：对内蓝图前缀 `/auth`；对外经 Nginx 为 `/cloudchat/auth/*`。
+* **计划**：Google / WeChat 登录、MFA、会话索引优化（避免扫描）。
 
 ### 技术栈
 
-- **后端框架**：
-  - Flask 3.1.1
-  - Python 3.12.3
-- **核心依赖**：
-  - `dashscope` （阿里云多模态大模型平台）
-  - `openai`（Deepseek 和 ChatGpt 都可以使用 OpenAI SDK）
-  - `requests` 用于网络请求
-- **图像生成模型**：
-  - stable-diffusion-v1.5 (目前不可用)
-- **聊天模型**：
-  - deepseek-chat
-  - qwen-turbo-2025-04-28
-- **WSGI 服务器**：
-  - Gunicorn 23.0.0
-  - Gevent 25.5.1
+* **语言/框架**：Python 3.12，Flask 3.x
+* **认证/密码**：argon2-cffi（Argon2id）
+* **数据库**：PostgreSQL 16 + PgBouncer（transaction 模式）+ SQLAlchemy；驱动 **psycopg2**
+* **缓存/会话/限速**：Redis（allkeys-lru，AOF/RDB 关闭，小内存优化）
+* **WSGI/并发**：Gunicorn + gevent（流式响应）
+* **邮件**：Aliyun DirectMail（SMTP STARTTLS:80 或 SSL:465）
 
-如下是关联项目。
+### 关联项目
 
-### 前端项目
+#### 前端：
 
-具体情况和网站页面功能描述请参考前端项目：📁 [Renda Zhang Web](https://github.com/RendaZhang/rendazhang)
+* 📁 [Renda Zhang Web](https://github.com/RendaZhang/rendazhang)（Astro + React + TS）
 
-### Nginx 项目
+#### Nginx：
 
-具体情况和项目部署请参考 Nginx 项目：📁 [Nginx Conf](https://github.com/RendaZhang/nginx-conf)
+* 📁 [Nginx Conf](https://github.com/RendaZhang/nginx-conf)（统一反代与安全头/HSTS/CDN 接入）
 
 ---
 
-## 安装和部署指南
+## 安装与部署
 
-在 Ubuntu 系统上安装并配置 Redis，并通过 systemd 部署和管理后端 CloudChat 服务。
+### 本地开发（macOS / Windows / Linux）
 
-具体的操作步骤请参考 Nginx 项目的文档内容：📄 [后端迁移](https://github.com/RendaZhang/nginx-conf/blob/master/docs/MIGRATION_GUIDE.md#%E5%90%8E%E7%AB%AF%E8%BF%81%E7%A7%BB)
+```bash
+# 1) 克隆
+git clone https://gitee.com/RendaZhang/python-cloud-chat.git
+cd python-cloud-chat
 
-如果要在 MAC 或者 Windowns 环境下安装和部署，请参考如下的基本步骤描述。
+# 2) 虚拟环境
+python3 -m venv venv
+source venv/bin/activate    # Windows: .\venv\Scripts\Activate.ps1
 
-1. 克隆项目
+# 3) 依赖
+pip install -r requirements.txt
 
-    ```bash
-    git clone https://gitee.com/RendaZhang/python-cloud-chat.git
-    cd python-cloud-chat
-    ```
+# 4) 基础环境（示例）
+export FLASK_SECRET_KEY=dev_secret
+export REDIS_PASSWORD=dev_redis_pass
+export DASHSCOPE_API_KEY=...
+export DEEPSEEK_API_KEY=...
 
-2. 创建并激活虚拟环境（推荐）
+# 5) 运行（开发）
+python app.py  # 或自行配置 debug server
+```
 
-    macOS/Linux:
+### 生产部署（Ubuntu 24 + Nginx + systemd）
 
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
+* **反代**：Nginx 挂载 `/cloudchat/*` 到后端 `127.0.0.1:5000`
+* **服务**：`/etc/systemd/system/cloudchat.service`（使用 venv 与 EnvironmentFile）
+* **内存优化**：Redis/CloudChat/PostgreSQL/PgBouncer 均设置 `MemoryMax` 与 OOM 分级
+* **会话**：Redis 本机；PostgreSQL 本机 5432；PgBouncer 监听 6432
 
-    Windows PowerShell:
-
-    ```powershell
-    python -m venv venv
-    .\venv\Scripts\Activate.ps1
-    ```
-
-3. 安装依赖
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-4. 设置 API 密钥（推荐使用环境变量）
-
-    macOS/Linux:
-
-    ```bash
-    export DASHSCOPE_API_KEY=your_dashscope_api_key
-    export DEEPSEEK_API_KEY=your_deepseek_api_key
-    export REDIS_PASSWORD=your_redis_pass
-    export FLASK_SECRET_KEY=your_flask_secret_key
-    ```
-
-    Windows PowerShell:
-
-    ```powershell
-    $env:DASHSCOPE_API_KEY="your_dashscope_api_key"
-    $env:DEEPSEEK_API_KEY="your_deepseek_api_key"
-    $env:REDIS_PASSWORD="your_redis_pass"
-    $env:FLASK_SECRET_KEY="your_flask_secret_key"
-    ```
-
-    或直接添加到 `activate` 文件中。
-
-    可选的环境变量示例：
-
-    ```bash
-    # 自定义模型或会话配置
-    export QWEN_MODEL="qwen-turbo-2025-04-28"
-    export SD_MODEL="stable-diffusion-v1.5"
-    export MAX_HISTORY=6
-    ```
-
-5. 启动服务
-
-    默认使用 **Gunicorn + Gevent** 作为 WSGI 服务器。
-
-    启动后 Gunicorn 服务在 `0.0.0.0:5000` 监听。
-
-6. 测试接口
-
-    ```bash
-    curl -X POST localhost:5000/auth/register \
-          -H "Content-Type: application/json" \
-          -d '{"email":"alice@example.com","password":"P@ssw0rd!","display_name":"Alice"}'
-    ```
+> 详细的运维参数、systemd override、内核与 journald 优化，见 Nginx 项目下的文档内容 ：📄 [CloudChat 服务器配置运行手册](https://github.com/RendaZhang/nginx-conf/blob/master/docs/CLOUDCHAT_SERVER_RUNBOOK.md)。
 
 ---
 
-## 项目文件说明
+## 环境变量
 
-| 文件名              | 功能描述                |
-| ------------------ | ----------------------- |
-| `app.py`           | 主应用，提供聊天、多轮对话、图像生成等接口 |
-| `requirements.txt` | 项目依赖列表             |
-| `README.md`        | 中文说明文档             |
+> 生产环境建议集中保存在：`/etc/cloudchat/cloudchat.env`（权限 600）
+
+```bash
+# 基础
+PATH=/opt/cloudchat/venv/bin
+FLASK_SECRET_KEY=***
+
+# 模型/第三方
+OPENAI_API_KEY=***
+DEEPSEEK_API_KEY=***
+DASHSCOPE_API_KEY=***
+
+# Redis
+REDIS_PASSWORD=***
+
+# 数据库（通过 PgBouncer 6432；psycopg2 驱动）
+DATABASE_URL=postgresql+psycopg2://cloudchat:***@127.0.0.1:6432/cloudchat
+
+# 会话/Cookie
+AUTH_COOKIE_NAME=cc_auth
+APP_SESSION_COOKIE_NAME=cc_app
+COOKIE_SECURE=1                 # 生产必须 1
+SESSION_TTL_SECONDS=604800
+
+# 密码找回
+PWRESET_TOKEN_TTL=900
+PWRESET_REVOKE_SESSIONS=1
+DEBUG_RETURN_RESET_TOKEN=0      # 生产关闭
+
+# 邮件（DirectMail，新加坡示例）
+SMTP_HOST=smtpdm-ap-southeast-1.aliyuncs.com
+SMTP_PORT=80
+SMTP_USER=noreply@mail.rendazhang.com
+SMTP_PASS=***
+SMTP_TLS=1
+MAIL_FROM=noreply@mail.rendazhang.com
+MAIL_SENDER_NAME=CloudChat
+FRONTEND_BASE_URL=https://www.rendazhang.com
+```
+
+---
+
+## 数据库与会话
+
+* **Schema**：三表（`users` / `credentials` / `sessions`）— 详见 `schema.sql`
+
+  * 唯一约束：`users.email/phone/uid`；`credentials(user_id,type)`；`(provider,provider_uid)`
+  * 索引：`lower(email)`、`sessions(user_id)`、`sessions(expires_at)`
+* **连接池**：PgBouncer（`pool_mode=transaction`，`default_pool_size=10`）
+* **SQLAlchemy**：推荐创建 Engine 时使用 `pool_pre_ping=True, pool_recycle=1800`
+* **会话**：Redis 键 `sess:<sid> -> user_id`；密码重置后**全端下线**（扫描删除，后续可升级为集合索引）
+
+---
+
+## 接口快速测试
+
+> 对外统一前缀：`https://www.rendazhang.com/cloudchat`
+
+```bash
+# 注册
+curl -X POST https://www.rendazhang.com/cloudchat/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"alice@example.com","password":"P@ssw0rd!","display_name":"Alice"}'
+
+# 登录（保存 Cookie）
+curl -i -c cookies.txt -X POST https://www.rendazhang.com/cloudchat/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"alice@example.com","password":"P@ssw0rd!"}'
+
+# 当前用户
+auth='-b cookies.txt'
+curl $auth https://www.rendazhang.com/cloudchat/auth/me
+
+# 忘记密码（邮件带重置链接）
+curl -X POST https://www.rendazhang.com/cloudchat/auth/password/forgot \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"alice@example.com"}'
+
+# 健康检查
+curl -s https://www.rendazhang.com/cloudchat/auth/healthz
+```
+
+---
+
+## 故障排查
+
+* **健康检查失败（503）**：确认 Redis/PostgreSQL 服务；查看 `journalctl -u cloudchat` 与 `pgbouncer.log`。
+* **邮件未达**：检查 DirectMail 域验证（SPF/DKIM/DMARC）、端口（推荐 80+STARTTLS）、SMTP 用户/密码是否为**发件地址**。
+* **登录正常但聊天异常**：确认前端 `fetch` 均设置 `credentials: 'include'`，并检查 Nginx 是否正确透传 `Set-Cookie` 与流式响应头。
+* **高并发**：根据 Redis/数据库负载调节 PgBouncer 池与 Gunicorn worker 数；必要时放宽 `MemoryMax`。
+
+---
+
+## 安全基线
+
+* 强制 HTTPS（HSTS 已启用）与 `COOKIE_SECURE=1`
+* 认证蓝图响应 `Cache-Control: no-store`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy: strict-origin-when-cross-origin`
+* 失败统一文案（登录/忘记密码防枚举）；注册/忘记密码限速
+* Argon2id；登录成功可按需 `check_needs_rehash` 平滑升级哈希
+
+---
+
+## 变更日志（2025-08）
+
+* 新增：注册/登录/登出/`/me`；Redis 会话 Cookie `cc_auth`；应用 Cookie `cc_app`
+* 新增：`/auth/password/forgot|reset` + DirectMail 邮件发送；重置后强制下线（简单版）
+* 新增：`/auth/healthz` 同时探测 Redis + PostgreSQL
+* 更新：`DATABASE_URL` 指向 PgBouncer（`postgresql+psycopg2://...@127.0.0.1:6432/cloudchat`）
+* 更新：Nginx 对外统一前缀 `/cloudchat/*`；后端蓝图前缀 `/auth`
+
+---
+
+## 项目文档
 
 ### 接口文档
 
@@ -172,7 +230,6 @@
 ### Python 轻量级后端开发指南
 
 涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [轻量级后端开发指南](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/LIGHTWEIGHT_BACKEND_DEVELOPMENT.md#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
-
 
 ### 故障排查及 BUG 追踪
 
