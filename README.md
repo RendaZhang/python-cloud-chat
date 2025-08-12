@@ -147,6 +147,14 @@
 
     启动后 Gunicorn 服务在 `0.0.0.0:5000` 监听。
 
+6. 测试接口
+
+    ```bash
+    curl -X POST localhost:5000/auth/register \
+          -H "Content-Type: application/json" \
+          -d '{"email":"alice@example.com","password":"P@ssw0rd!","display_name":"Alice"}'
+    ```
+
 ---
 
 ## 项目文件说明
