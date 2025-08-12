@@ -65,6 +65,7 @@ app.config["SESSION_COOKIE_NAME"] = os.getenv("APP_SESSION_COOKIE_NAME", "cc_app
 # 可保持和认证 Cookie 一致的安全属性
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.getenv("COOKIE_SECURE", "1") == "1"
+app.config["SESSION_COOKIE_HTTPONLY"] = True
 
 # 登录和注册接口
 app.register_blueprint(auth_bp)
@@ -165,6 +166,7 @@ def monitor_resources():
         app.logger.error(f"监控错误: {str(e)}")
 
 
-scheduler = BackgroundScheduler()
-scheduler.add_job(monitor_resources, "interval", minutes=1)
-scheduler.start()
+if os.getenv("ENABLE_SCHEDULER", "0") == "1":
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(monitor_resources, "interval", minutes=1)
+    scheduler.start()

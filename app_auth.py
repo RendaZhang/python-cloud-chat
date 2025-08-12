@@ -7,6 +7,7 @@ from argon2 import PasswordHasher
 from flask import Blueprint, request, jsonify, make_response, current_app
 from db import get_session
 from models import User, Credential
+from sqlalchemy import text
 import os
 import re
 import secrets
@@ -114,6 +115,17 @@ def _revoke_user_sessions_simple(user_id: int) -> int:
     return count
 
 
+# 注册限速（防撞库/滥用） + 密码强度统一校验
+def _password_ok(p: str) -> bool:
+    if not p or len(p) < 8 or len(p) > 128:
+        return False
+    classes = 0
+    classes += 1 if re.search(r"[A-Za-z]", p) else 0
+    classes += 1 if re.search(r"\d", p) else 0
+    classes += 1 if re.search(r"[^A-Za-z0-9]", p) else 0
+    return classes >= 2
+
+
 # ---- 路由 ----
 # 注册接口会返回 409 表示邮箱/手机号已被占用（注册场景允许提示唯一性冲突）。
 @auth.post("/register")
@@ -124,8 +136,16 @@ def register():
     pwd = data.get("password") or ""
     display_name = (data.get("display_name") or "").strip() or None
 
-    if not pwd or len(pwd) < 8:
+    # 基础限速：按 IP 10/小时；email 3/小时
+    if not _rate_limit(f"rl:reg:ip:{_client_ip()}", 10, 3600) or (
+        email and not _rate_limit(f"rl:reg:email:{email}", 3, 3600)
+    ):
+        return jsonify({"ok": False, "error": "Too many requests"}), 429
+
+    # 密码强度
+    if not _password_ok(pwd):
         return jsonify({"ok": False, "error": "Weak password"}), 400
+
     if not email and not phone:
         return jsonify({"ok": False, "error": "email or phone required"}), 400
     if email and not _email_re.match(email):
@@ -204,6 +224,18 @@ def login():
 
         try:
             ph.verify(cred.secret_hash, pwd)
+            # 如果未来调整了 Argon2 参数，这里自动换新
+            if ph.check_needs_rehash(cred.secret_hash):
+                with get_session() as s2:
+                    from sqlalchemy import select
+
+                    c2 = (
+                        s2.execute(select(Credential).filter(Credential.id == cred.id))
+                        .scalars()
+                        .first()
+                    )
+                    if c2:
+                        c2.secret_hash = ph.hash(pwd)
         except Exception:
             return jsonify({"ok": False, "error": "Invalid credentials"}), 401
 
@@ -311,7 +343,7 @@ def password_reset():
     token = (data.get("token") or "").strip()
     new_pwd = data.get("password") or ""
 
-    if not token or len(new_pwd) < 8:
+    if not token or not _password_ok(new_pwd):
         return jsonify({"ok": False, "error": "Invalid token or weak password"}), 400
 
     key = f"pwreset:{token}"
@@ -353,9 +385,27 @@ def password_reset():
 # 健康检查（检查依赖连通性）
 @auth.get("/healthz")
 def healthz():
+    redis_ok = True
+    db_ok = True
     try:
         redis_client.ping()
-        healthy = True
     except Exception:
-        healthy = False
-    return jsonify({"ok": healthy}), (200 if healthy else 503)
+        redis_ok = False
+    try:
+        with get_session() as s:
+            s.execute(text("select 1"))
+    except Exception:
+        db_ok = False
+    ok = redis_ok and db_ok
+    return jsonify({"ok": ok, "redis": bool(redis_ok), "db": bool(db_ok)}), (
+        200 if ok else 503
+    )
+
+
+@auth.after_request
+def _auth_headers(resp):
+    resp.headers.setdefault("Cache-Control", "no-store")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    return resp
