@@ -157,6 +157,9 @@ def login():
         if not user or not user.is_active:
             return jsonify({"ok": False, "error": "Invalid credentials"}), 401
 
+        # 提前提取 user.id，避免在会话关闭后访问 user 对象
+        user_id = user.id
+
         cred = (
             s.query(Credential)
             .filter(Credential.user_id == user.id, Credential.type == "password")
@@ -171,7 +174,8 @@ def login():
             return jsonify({"ok": False, "error": "Invalid credentials"}), 401
 
     # 发会话
-    sid = _issue_session(user.id)
+    # 会话关闭后，只使用 user_id
+    sid = _issue_session(user_id)
     resp = make_response(jsonify({"ok": True}))
     resp.set_cookie(
         COOKIE_NAME,
