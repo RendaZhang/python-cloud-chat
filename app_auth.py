@@ -136,9 +136,14 @@ def register():
     pwd = data.get("password") or ""
     display_name = (data.get("display_name") or "").strip() or None
 
+    if not email:
+        return jsonify({"ok": False, "error": "email required"}), 400
+    if not _email_re.match(email):
+        return jsonify({"ok": False, "error": "Invalid email"}), 400
+
     # 基础限速：按 IP 10/小时；email 3/小时
-    if not _rate_limit(f"rl:reg:ip:{_client_ip()}", 10, 3600) or (
-        email and not _rate_limit(f"rl:reg:email:{email}", 3, 3600)
+    if not _rate_limit(f"rl:reg:ip:{_client_ip()}", 10, 3600) or not _rate_limit(
+        f"rl:reg:email:{email}", 3, 3600
     ):
         return jsonify({"ok": False, "error": "Too many requests"}), 429
 
@@ -146,14 +151,9 @@ def register():
     if not _password_ok(pwd):
         return jsonify({"ok": False, "error": "Weak password"}), 400
 
-    if not email and not phone:
-        return jsonify({"ok": False, "error": "email or phone required"}), 400
-    if email and not _email_re.match(email):
-        return jsonify({"ok": False, "error": "Invalid email"}), 400
-
     with get_session() as s:
         # 重复检查
-        if email and s.query(User).filter(User.email == email).first():
+        if s.query(User).filter(User.email == email).first():
             return jsonify({"ok": False, "error": "Email already registered"}), 409
         if phone and s.query(User).filter(User.phone == phone).first():
             return jsonify({"ok": False, "error": "Phone already registered"}), 409

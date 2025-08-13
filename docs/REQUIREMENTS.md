@@ -13,27 +13,32 @@
 # 项目需求清单
 
 - **负责人**: 张人大（Renda Zhang）
-- **最后更新**: July 18, 2025, 17:30 (UTC+8)
+- **最后更新**: August 13, 2025, 15:45 (UTC+8)
 - **项目状态**: 稳定运行，持续开发中
 
 ---
 
 ## 简介
 
-Python Cloud Chat 是一个基于 Flask 的轻量级后端服务，提供 AI 对话和图像生成能力。
-项目使用 Gunicorn + Gevent 在小内存服务器上部署，支持多轮对话的会话管理。
+Python Cloud Chat 是一个基于 Flask 的轻量级后端服务，提供用户认证、AI 对话和图像生成能力。
+项目使用 Gunicorn + Gevent 在小内存服务器上部署，支持多轮对话和用户会话管理。
 
 ---
 
 ## 🚀 核心功能
 
-1. **多模型 AI 对话**
+1. **用户认证与注册**
+   - [x] `/auth/register`：邮箱必填、手机号可选，按 IP 和邮箱限速
+   - [x] `/auth/login`、`/auth/logout`、`/auth/me`
+   - [x] `/auth/password/forgot` 与 `/auth/password/reset` 完成密码重置
+   - [x] 数据库层面强制 `email` 非空唯一，`phone` 可空
+2. **多模型 AI 对话**
    - [x] `/chat` 接口：使用 Qwen 模型进行流式对话
    - [x] `/deepseek_chat` 接口：使用 DeepSeek 模型并保存历史会话至 Redis
    - [x] `/reset_chat` 接口：重置当前会话的历史记录
-2. **AI 图像生成**
+3. **AI 图像生成**
    - [x] `/generate_image` 接口：基于 Stable Diffusion 生成图片
-3. **系统监控与测试**
+4. **系统监控与测试**
    - [x] APScheduler 每分钟记录系统和 Redis 内存情况
    - [x] `/test` 接口：返回时间戳和请求 ID 供缓存验证
 
@@ -43,7 +48,7 @@ Python Cloud Chat 是一个基于 Flask 的轻量级后端服务，提供 AI 对
 
 - [x] pre-commit 自动执行 doctoc 更新文档目录
 - [ ] 完善单元测试并集成到 CI
-- [ ] 实现简单的 API 限流和身份验证
+- [x] 实现简单的 API 限流和身份验证
 - [ ] Docker 化部署与环境配置
 
 ---
@@ -53,3 +58,4 @@ Python Cloud Chat 是一个基于 Flask 的轻量级后端服务，提供 AI 对
 - 支持更多模型及参数自定义
 - 提供前端界面与 OAuth 登录
 - 自动化监控与告警
+- 完善邮箱验证与多因素认证

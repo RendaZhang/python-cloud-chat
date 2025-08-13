@@ -11,7 +11,7 @@ class User(Base):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
-    email: Mapped[str | None] = mapped_column(String(255), unique=True)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     phone: Mapped[str | None] = mapped_column(String(32), unique=True)
     display_name: Mapped[str | None] = mapped_column(String(80))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

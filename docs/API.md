@@ -91,7 +91,7 @@
 
 ```json
 {
-  "email": "alice@example.com",   // 可选，与 phone 必须至少一个
+  "email": "alice@example.com",   // 必填
   "phone": "+86-13800000000",    // 可选
   "password": "P@ssw0rd!",        // 必填，≥8 且至少包含两类字符（字母/数字/特殊）
   "display_name": "Alice"         // 可选
@@ -101,10 +101,10 @@
 * **响应**：
 
   * `201 {"ok": true}`
-  * `400 {"ok": false, "error": "Weak password | Invalid email | email or phone required"}`
+  * `400 {"ok": false, "error": "Weak password | Invalid email | email required"}`
   * `409 {"ok": false, "error": "Email already registered | Phone already registered"}`
   * `429 {"ok": false, "error": "Too many requests"}`
-* **说明**：服务端对 Email 去空格并统一为小写；同一 Email/Phone 只能注册一次。
+* **说明**：Email 必填，服务端去空格并统一为小写；Phone 可选；同一 Email/Phone 只能注册一次。
 
 ### 登录 — `POST /auth/login`
 

@@ -4,7 +4,7 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS users (
   id           BIGSERIAL PRIMARY KEY,
   uid          TEXT UNIQUE NOT NULL,            -- 外显ID（应用层生成）
-  email        TEXT UNIQUE,                     -- 建议应用层统一转小写
+  email        TEXT UNIQUE NOT NULL,            -- 建议应用层统一转小写
   phone        TEXT UNIQUE,
   display_name TEXT,
   is_active    BOOLEAN DEFAULT TRUE,
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 -- 实用索引
 CREATE INDEX IF NOT EXISTS idx_users_email_ci
-  ON users((lower(email))) WHERE email IS NOT NULL;   -- 邮箱大小写不敏感的查找
+  ON users((lower(email)));                      -- 邮箱大小写不敏感的查找
 CREATE INDEX IF NOT EXISTS idx_sessions_user
   ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires
