@@ -33,7 +33,7 @@
 # Python 后端服务
 
 - **作者**: 张人大（Renda Zhang）
-- **最后更新**: August 13, 2025, 04:30 (UTC+08:00)
+- **最后更新**: August 13, 2025, 20:10 (UTC+08:00)
 
 ---
 
@@ -104,7 +104,7 @@ python app.py  # 或自行配置 debug server
 * **内存优化**：Redis/CloudChat/PostgreSQL/PgBouncer 均设置 `MemoryMax` 与 OOM 分级
 * **会话**：Redis 本机；PostgreSQL 本机 5432；PgBouncer 监听 6432
 
-> 详细的运维参数、systemd override、内核与 journald 优化，见 Nginx 项目下的文档内容 ：📄 [CloudChat 服务器配置运行手册](https://github.com/RendaZhang/nginx-conf/blob/master/docs/CLOUDCHAT_SERVER_RUNBOOK.md)。
+> 详细的运维参数、systemd override、内核与 journald 优化，见 Nginx 项目下的文档内容 ：📄 [CloudChat 服务器配置运行手册](https://github.com/RendaZhang/nginx-conf/blob/master/docs/SERVER_RUNBOOK.md)。
 
 ---
 
