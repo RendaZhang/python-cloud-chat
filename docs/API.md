@@ -33,7 +33,7 @@
 # API 文档
 
 - **作者**: 张人大（Renda Zhang）
-- **最后更新**: August 13, 2025, 04:30 (UTC+08:00)
+- **最后更新**: August 15, 2025, 02:50 (UTC+08:00)
 
 ---
 
@@ -104,7 +104,7 @@
   * `400 {"ok": false, "error": "Weak password | Invalid email | email required"}`
   * `409 {"ok": false, "error": "Email already registered | Phone already registered"}`
   * `429 {"ok": false, "error": "Too many requests"}`
-* **说明**：Email 必填，服务端去空格并统一为小写；Phone 可选；同一 Email/Phone 只能注册一次。
+* **说明**：Email 必填，服务端去空格并统一为小写；Phone 可选；同一 Email/Phone 只能注册一次。成功注册后系统会向邮箱发送一封欢迎邮件。
 
 ### 登录 — `POST /auth/login`
 
@@ -160,7 +160,7 @@
 { "token": "<TOKEN>", "password": "NewP@ssw0rd42!" }
 ```
 
-* **成功**：`200 {"ok": true, "revoked_sessions": 7}`（`revoked_sessions` 为被强制下线的会话数）。
+* **成功**：`200 {"ok": true, "revoked_sessions": 7}`（`revoked_sessions` 为被强制下线的会话数）并向用户发送密码重置成功邮件。
 * **失败**：`400 {"ok": false, "error": "Token invalid or expired | Invalid token or weak password"}`
 
 ### 健康检查 — `GET /auth/healthz`

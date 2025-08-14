@@ -176,6 +176,13 @@ def register():
             created_at=datetime.now(timezone.utc),
         )
         s.add(cred)
+    # 注册成功后发送欢迎邮件；失败不影响主流程
+    try:
+        from mailer import send_register_success_email
+
+        send_register_success_email(email)
+    except Exception as e:
+        current_app.logger.exception("send register email failed: %s", e)
 
     return jsonify({"ok": True}), 201
 
@@ -355,9 +362,17 @@ def password_reset():
         return jsonify({"ok": False, "error": "Token invalid or expired"}), 400
 
     user_id = int(val)
+    email = None
     with get_session() as s:
         from sqlalchemy import select
 
+        user = s.get(User, user_id)
+        if not user:
+            return (
+                jsonify({"ok": False, "error": "User not found"}),
+                400,
+            )
+        email = user.email
         cred = (
             s.execute(
                 select(Credential).filter(
@@ -377,6 +392,14 @@ def password_reset():
     revoked = 0
     if PWRESET_REVOKE_SESSIONS:
         revoked = _revoke_user_sessions_simple(user_id)
+    # 发送密码重置成功邮件；失败仅记录日志
+    try:
+        from mailer import send_reset_success_email
+
+        if email:
+            send_reset_success_email(email)
+    except Exception as e:
+        current_app.logger.exception("send reset success email failed: %s", e)
 
     # 返回 revoked_sessions，便于在日志里观察效果
     return jsonify({"ok": True, "revoked_sessions": int(revoked)}), 200
