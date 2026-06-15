@@ -47,8 +47,14 @@ committed document.
 
 ## Local Development
 
+- Use Python 3.12 for parity with production.
+- Runtime version files are committed for local tooling:
+  - `.python-version` for pyenv-compatible Python selection.
+  - `.mise.toml` for mise-based Python selection.
+
 ```bash
-python3 -m venv venv
+mise install
+python3.12 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python app.py
