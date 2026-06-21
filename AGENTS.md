@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Last updated: 2026-06-15
+Last updated: 2026-06-21
 
 This file gives AI coding agents the project context needed to work safely in the
 `python-cloud-chat` backend repository. The repository is public, so do not add
@@ -36,7 +36,7 @@ committed document.
 
 ## Runtime Context
 
-- Language/runtime: Python 3.12.
+- Language/runtime: Python 3.13.
 - Framework: Flask.
 - Production server: Gunicorn with gevent workers.
 - Session/cache/rate-limit dependency: Redis.
@@ -47,14 +47,14 @@ committed document.
 
 ## Local Development
 
-- Use Python 3.12 for parity with production.
+- Use Python 3.13 for parity with production.
 - Runtime version files are committed for local tooling:
   - `.python-version` for pyenv-compatible Python selection.
   - `.mise.toml` for mise-based Python selection.
 
 ```bash
 mise install
-python3.12 -m venv venv
+python3.13 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python app.py

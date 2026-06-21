@@ -33,7 +33,7 @@
 # Python 后端服务
 
 - **作者**: 张人大（Renda Zhang）
-- **最后更新**: August 13, 2025, 20:10 (UTC+08:00)
+- **最后更新**: June 21, 2026, 21:35 (UTC+08:00)
 
 ---
 
@@ -52,7 +52,7 @@
 
 ### 技术栈
 
-* **语言/框架**：Python 3.12，Flask 3.x
+* **语言/框架**：Python 3.13，Flask 3.x
 * **认证/密码**：argon2-cffi（Argon2id）
 * **数据库**：PostgreSQL 16 + PgBouncer（transaction 模式）+ SQLAlchemy；驱动 **psycopg2**
 * **缓存/会话/限速**：Redis（allkeys-lru，AOF/RDB 关闭，小内存优化）
@@ -81,7 +81,7 @@ git clone https://gitee.com/RendaZhang/python-cloud-chat.git
 cd python-cloud-chat
 
 # 2) 虚拟环境
-python3 -m venv venv
+python3.13 -m venv venv
 source venv/bin/activate    # Windows: .\venv\Scripts\Activate.ps1
 
 # 3) 依赖
