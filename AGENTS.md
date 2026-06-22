@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Last updated: 2026-06-21
+Last updated: 2026-06-22
 
 This file gives AI coding agents the project context needed to work safely in the
 `python-cloud-chat` backend repository. The repository is public, so do not add
@@ -51,6 +51,18 @@ committed document.
 - Runtime version files are committed for local tooling:
   - `.python-version` for pyenv-compatible Python selection.
   - `.mise.toml` for mise-based Python selection.
+- `mise` is not macOS-only. For Windows agents, prefer WSL2 + Ubuntu + mise as
+  the supported local-development baseline. Native Windows PowerShell + mise may
+  work, but Python native dependencies and path behavior must be revalidated
+  before treating it as equivalent.
+- This repository's `.mise.toml` and `.python-version` are authoritative for the
+  backend Python runtime. A developer machine may also keep a non-committed
+  parent workspace `.mise.toml` to provide shared defaults for sibling
+  repositories, but agents must not rely on that file being present after
+  cloning only this repository.
+- If a non-interactive shell resolves Homebrew/system Python instead of mise,
+  check that `~/.local/share/mise/shims` is on `PATH` and run `mise doctor`.
+  Do not fix backend scripts by hard-coding local Python installation paths.
 
 ```bash
 mise install
