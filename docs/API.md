@@ -20,6 +20,7 @@
     - [DeepSeek 多轮对话（流式） — `POST /deepseek_chat`](#deepseek-%E5%A4%9A%E8%BD%AE%E5%AF%B9%E8%AF%9D%E6%B5%81%E5%BC%8F--post-deepseek_chat)
     - [重置聊天历史 — `POST /reset_chat`](#%E9%87%8D%E7%BD%AE%E8%81%8A%E5%A4%A9%E5%8E%86%E5%8F%B2--post-reset_chat)
     - [缓存测试 — `GET /test`](#%E7%BC%93%E5%AD%98%E6%B5%8B%E8%AF%95--get-test)
+    - [Visitor telemetry（未实现）](#visitor-telemetry%E6%9C%AA%E5%AE%9E%E7%8E%B0)
   - [前端对接要点（Astro + React + TS）](#%E5%89%8D%E7%AB%AF%E5%AF%B9%E6%8E%A5%E8%A6%81%E7%82%B9astro--react--ts)
     - [登录/注册页](#%E7%99%BB%E5%BD%95%E6%B3%A8%E5%86%8C%E9%A1%B5)
     - [个人信息（Profile / 顶栏）](#%E4%B8%AA%E4%BA%BA%E4%BF%A1%E6%81%AFprofile--%E9%A1%B6%E6%A0%8F)
@@ -33,7 +34,7 @@
 # API 文档
 
 - **作者**: 张人大（Renda Zhang）
-- **最后更新**: August 15, 2025, 02:50 (UTC+08:00)
+- **最后更新**: July 02, 2026, 18:00 (UTC+08:00)
 
 ---
 
@@ -201,6 +202,17 @@
 ### 缓存测试 — `GET /test`
 
 * **返回**：`200 {"timestamp": 1752421640.8777, "request_id": "uuid"}`（配合 Nginx 可观察 `X-Cache-Status`）。
+
+### Visitor telemetry（未实现）
+
+当前没有 `/telemetry/*` 或 `/cloudchat/telemetry/*` 接口。Slice 11.5 的预检查结论是暂不新增后端
+visitor telemetry transport、schema、Redis key、retention job 或生产服务改动。
+
+如未来重新打开该决策，只允许先按
+[`docs/VISITOR_TELEMETRY_PRECHECK.md`](./VISITOR_TELEMETRY_PRECHECK.md) 中的 aggregate-only
+方案设计，并继续禁止采集 visitor-entered text、chat messages、generated answers、contact form
+content、auth/profile identifiers、emails、phones、cookies、tokens、full URLs、query strings、raw
+IP event fields、raw user-agent strings 和 private operational details。
 
 ---
 
