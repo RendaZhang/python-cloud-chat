@@ -286,6 +286,8 @@ python -m unittest discover -s tests
 * 英文/中文 prompt framing；
 * 公共来源标签与公开事实；
 * 私密、无依据或 prompt-injection 问题的拒答规则；
+* 固定中英文 QA：私密薪资/客户细节、隐藏服务器路径、prompt injection、仅凭证书推断大型
+  AWS 生产体系、工作/教育证据和架构/测试导航；
 * prompt 不包含真实敏感值、完整 URL、query string、私有路径、邮箱、手机号或会话标识；
 * live route 仍兼容 `{ "message": "..." }`；
 * `public_site` guide mode 调用 prompt builder；
