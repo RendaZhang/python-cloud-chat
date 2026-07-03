@@ -124,15 +124,41 @@ class ChatGuidePromptTests(unittest.TestCase):
         ):
             self.assertNotIn(raw_secret_marker, combined)
 
-    def test_chat_route_is_not_wired_to_prompt_builder_yet(self):
+    def test_chat_route_preserves_default_message_contract(self):
         app_source = Path("app.py").read_text(encoding="utf-8")
 
-        self.assertNotIn("chat_guide_prompt", app_source)
-        self.assertNotIn("build_chat_guide_prompt", app_source)
         self.assertIn('content.get("message")', app_source)
         self.assertIn(
             'session["messages"].append({"role": "user", "content": user_message})',
             app_source,
+        )
+        self.assertIn('model_messages = session["messages"]', app_source)
+
+    def test_chat_route_wires_public_site_guide_mode_without_session_prompt(self):
+        app_source = Path("app.py").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "from chat_guide_prompt import build_chat_guide_prompt", app_source
+        )
+        self.assertIn('CHAT_GUIDE_MODE_PUBLIC_SITE = "public_site"', app_source)
+        self.assertIn(
+            'content.get("guideMode") == CHAT_GUIDE_MODE_PUBLIC_SITE',
+            app_source,
+        )
+        self.assertIn("build_chat_guide_prompt(", app_source)
+        self.assertIn('preset_id=content.get("presetId")', app_source)
+        self.assertIn('locale=content.get("locale")', app_source)
+        self.assertIn('"content": guide_prompt.prompt', app_source)
+        self.assertIn(
+            "response_gen = generate_deepseek_response(model_messages)",
+            app_source,
+        )
+        self.assertNotRegex(
+            app_source,
+            re.compile(
+                r'session\["messages"\]\.append\(\{[^}]*guide_prompt\.prompt',
+                re.DOTALL,
+            ),
         )
 
 

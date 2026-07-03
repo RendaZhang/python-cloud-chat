@@ -242,7 +242,7 @@ curl -s https://www.rendazhang.com/cloudchat/auth/healthz
 
 ### Chat Guide Prompt Boundary
 
-后端公共知识包、受控 preset ID、拒答边界、双语 prompt builder 以及尚未接入 `/deepseek_chat` 的 live API 边界见：📄 [Chat Guide Prompt Boundary](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/CHAT_GUIDE_PROMPT_BOUNDARY.md#chat-guide-prompt-boundary)
+后端公共知识包、受控 preset ID、拒答边界、双语 prompt builder 以及 `/deepseek_chat` 的 opt-in guide mode 边界见：📄 [Chat Guide Prompt Boundary](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/CHAT_GUIDE_PROMPT_BOUNDARY.md#chat-guide-prompt-boundary)
 
 ### 故障排查及 BUG 追踪
 

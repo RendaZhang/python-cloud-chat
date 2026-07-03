@@ -20,7 +20,7 @@
     - [DeepSeek 多轮对话（流式） — `POST /deepseek_chat`](#deepseek-%E5%A4%9A%E8%BD%AE%E5%AF%B9%E8%AF%9D%E6%B5%81%E5%BC%8F--post-deepseek_chat)
     - [重置聊天历史 — `POST /reset_chat`](#%E9%87%8D%E7%BD%AE%E8%81%8A%E5%A4%A9%E5%8E%86%E5%8F%B2--post-reset_chat)
     - [缓存测试 — `GET /test`](#%E7%BC%93%E5%AD%98%E6%B5%8B%E8%AF%95--get-test)
-    - [Chat Guide prompt boundary（未接入 live API）](#chat-guide-prompt-boundary%E6%9C%AA%E6%8E%A5%E5%85%A5-live-api)
+    - [Chat Guide opt-in mode](#chat-guide-opt-in-mode)
     - [Visitor telemetry（未实现）](#visitor-telemetry%E6%9C%AA%E5%AE%9E%E7%8E%B0)
   - [前端对接要点（Astro + React + TS）](#%E5%89%8D%E7%AB%AF%E5%AF%B9%E6%8E%A5%E8%A6%81%E7%82%B9astro--react--ts)
     - [登录/注册页](#%E7%99%BB%E5%BD%95%E6%B3%A8%E5%86%8C%E9%A1%B5)
@@ -204,19 +204,36 @@
 
 * **返回**：`200 {"timestamp": 1752421640.8777, "request_id": "uuid"}`（配合 Nginx 可观察 `X-Cache-Status`）。
 
-### Chat Guide prompt boundary（未接入 live API）
+### Chat Guide opt-in mode
 
-Slice 12.2 新增了后端 `chat_guide_prompt.py`，用于维护 Chat Guide 的公开知识包、受控 preset ID、来源标签、拒答边界和双语 prompt builder。
+Slice 12.3 在现有 `/deepseek_chat` route 上增加了可选 Chat Guide mode。默认请求仍可只发送：
 
-当前 live API 不变：
+```json
+{ "message": "你好，DeepSeek" }
+```
 
-- `/deepseek_chat` 仍只接收 `{ "message": "..." }`。
+当且仅当请求体包含受控值 `"guideMode": "public_site"` 时，后端会调用
+`chat_guide_prompt.py` 的 `build_chat_guide_prompt(...)`，把当前 `message`、可选
+`presetId` 与可选 `locale` 组合成模型侧公开知识 prompt：
+
+```json
+{
+  "message": "What does PersonalWeb prove?",
+  "guideMode": "public_site",
+  "presetId": "personalweb_proof",
+  "locale": "en"
+}
+```
+
+兼容与安全边界：
+
+- 缺省 `guideMode` 或未知 `guideMode` 会按普通聊天路径处理。
+- 未知 `presetId` 会由 prompt builder 安全 fallback，不会把未知 ID 写进模型 prompt。
 - 流式响应格式仍是逐行 JSON，字段仍为 `text`。
-- Flask session 聊天历史行为不变。
-- `app.py` 尚未 import 或调用 `chat_guide_prompt.py`。
-- 前端请求体、Chat Widget iframe 协议、Nginx 路由、Redis/PostgreSQL、visitor telemetry 与生产服务行为均未改变。
-
-后续如果接入 Chat Guide mode，需要在新的切片中显式定义请求形状、默认兼容行为和验证计划。
+- Flask session 聊天历史只保存可见 `message` 和 assistant answer，不保存隐藏的公开知识 prompt。
+- Guide mode 的模型调用不使用先前任意聊天历史作为来源上下文，避免污染公开知识边界。
+- 前端 Chat Widget iframe 协议、Nginx 路由、Redis/PostgreSQL、visitor telemetry 与生产
+  服务依赖均未改变。
 
 详细边界见
 [`docs/CHAT_GUIDE_PROMPT_BOUNDARY.md`](./CHAT_GUIDE_PROMPT_BOUNDARY.md)。

@@ -16,16 +16,18 @@
 
 # Chat Guide Prompt Boundary
 
-- **Last Updated**: July 03, 2026, 12:49 (UTC+08:00)
-- **Scope**: Slice 12.2 backend-owned public knowledge package and pure Chat Guide prompt builder.
-- **Status**: Implemented as unused backend code. Not wired into live `/deepseek_chat`.
+- **Last Updated**: July 03, 2026, 13:20 (UTC+08:00)
+- **Scope**: Slice 12.2 backend-owned public knowledge package and Slice 12.3 opt-in Chat
+  Guide mode transport.
+- **Status**: Prompt builder is wired only when `/deepseek_chat` receives
+  `"guideMode": "public_site"`. Default chat requests remain unchanged.
 
 ## Purpose
 
 The Chat Guide should answer public questions about Renda Zhang, PersonalWeb, certifications,
 work/education evidence, cloud-native credibility, and site navigation from public sources only.
-Slice 12.2 moves the source-bounded answer policy into backend-owned code before any live API
-transport or frontend request-shape change exists.
+Slice 12.2 moved the source-bounded answer policy into backend-owned code. Slice 12.3 wires that
+policy into an explicit opt-in guide mode while preserving default chat behavior.
 
 This document describes the backend prompt boundary added in `chat_guide_prompt.py`.
 
@@ -44,12 +46,14 @@ Implemented now:
   - the current visitor question;
   - an optional controlled preset ID;
   - an optional locale/language hint.
+- An opt-in live route path where `/deepseek_chat` uses the prompt builder only when
+  `guideMode` is exactly `public_site`.
 - Focused standard-library unit tests in `tests/test_chat_guide_prompt.py`.
 
 Not implemented now:
 
-- No route, request body, streaming response, session, frontend, Nginx, database, Redis, telemetry,
-  dependency, runtime, or production service behavior change.
+- No default chat request, streaming response format, Nginx, database, Redis, telemetry,
+  dependency, runtime, or Chat Widget iframe protocol change.
 - No RAG/vector retrieval, crawler, CMS, external search dependency, or persistent public knowledge
   store.
 
@@ -100,22 +104,38 @@ The prompt builder is pure. It does not:
 - call Redis, PostgreSQL, SMTP, Nginx, or third-party analytics;
 - read cookies, auth/profile identifiers, IP fields, raw user-agent strings, or request headers.
 
-The prompt text may include the current visitor question because a later Chat Guide integration
-will need to send that question to the model. It must not be reused as visitor telemetry or stored
-as an analytics event.
+The prompt text may include the current visitor question because guide-mode model calls must answer
+the visitor's current question. It must not be reused as visitor telemetry or stored as an analytics
+event.
 
 ## Live API Boundary
 
-The live chat endpoint remains unchanged in Slice 12.2:
+Default live chat remains backward compatible:
 
 - `/deepseek_chat` still accepts `{ "message": "..." }`.
 - Streaming still returns newline-delimited JSON chunks with a `text` field.
-- The Flask session chat history behavior is unchanged.
-- `app.py` does not import `chat_guide_prompt.py`.
-- Frontend request payloads and the Chat Widget iframe protocol are unchanged.
+- The ordinary Flask session chat history behavior is unchanged.
+- Unknown or missing `guideMode` values follow the ordinary chat path.
 
-The next integration slice should explicitly decide the guide-mode request shape before using this
-prompt builder in live traffic.
+Opt-in guide mode uses this request shape:
+
+```json
+{
+  "message": "What does PersonalWeb prove?",
+  "guideMode": "public_site",
+  "presetId": "personalweb_proof",
+  "locale": "en"
+}
+```
+
+When `guideMode` is `public_site`, `app.py` calls
+`build_chat_guide_prompt(message, preset_id, locale)` for the model-facing user content. The Flask
+session still stores only the visible visitor `message` as the user turn and the streamed assistant
+answer as the assistant turn. The hidden public knowledge prompt is not written to session history.
+
+Guide-mode model calls intentionally use only the current guide prompt plus the configured system
+prompt, not prior arbitrary chat turns, to reduce source-boundary contamination risk. The Chat
+Widget iframe `postMessage` protocol is unchanged.
 
 ## Validation
 
@@ -136,7 +156,7 @@ pre-commit run --all-files
 
 ## Next Slice Handoff
 
-The next slice should wire an explicit Chat Guide mode from frontend to backend only after this
-backend prompt boundary is stable. Default chat behavior should remain unchanged when guide mode is
-absent, and preset telemetry should remain controlled ID-only/no-op unless a later privacy decision
-changes transport.
+The next slice should run refusal, unknown-answer, and prompt-injection QA against the live
+guide-mode path. Default chat behavior should remain unchanged when guide mode is absent, and
+preset telemetry should remain controlled ID-only/no-op unless a later privacy decision changes
+transport.

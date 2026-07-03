@@ -11,6 +11,7 @@ from flask import (
 )
 from flask_session import Session
 from app_auth import auth as auth_bp
+from chat_guide_prompt import build_chat_guide_prompt
 import json
 import os
 import uuid
@@ -43,6 +44,8 @@ SD_MODEL = os.getenv("SD_MODEL", "stable-diffusion-v1.5")
 IMAGE_SIZE = os.getenv("IMAGE_SIZE", "512*512")
 # 保留的历史对话轮数
 MAX_HISTORY = int(os.getenv("MAX_HISTORY", 6))
+# 受控 Chat Guide 模式；缺省或其他值保持原聊天路径
+CHAT_GUIDE_MODE_PUBLIC_SITE = "public_site"
 # Redis 服务配置
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
@@ -96,7 +99,19 @@ def deepseek_chat():
 
     session.modified = True
 
-    response_gen = generate_deepseek_response(session["messages"])
+    model_messages = session["messages"]
+    if content.get("guideMode") == CHAT_GUIDE_MODE_PUBLIC_SITE:
+        guide_prompt = build_chat_guide_prompt(
+            user_message,
+            preset_id=content.get("presetId"),
+            locale=content.get("locale"),
+        )
+        model_messages = [
+            session["messages"][0],
+            {"role": "user", "content": guide_prompt.prompt},
+        ]
+
+    response_gen = generate_deepseek_response(model_messages)
     return Response(stream_with_context(response_gen), content_type="application/json")
 
 

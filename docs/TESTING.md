@@ -267,10 +267,11 @@ redis-cli -a $REDIS_PASSWORD TTL 'pwreset:<token>'
 redis-cli -a $REDIS_PASSWORD KEYS 'sess:*' | wc -l
 ```
 
-## Chat Guide prompt builder tests
+## Chat Guide prompt builder and guide-mode tests
 
-Slice 12.2 新增的 `chat_guide_prompt.py` 是纯后端 prompt boundary，尚未接入 live
-`/deepseek_chat`。
+Slice 12.2 新增的 `chat_guide_prompt.py` 是后端 prompt boundary。Slice 12.3 将它接入
+`/deepseek_chat` 的显式 opt-in guide mode：只有请求体包含 `"guideMode": "public_site"` 时才使用
+公开知识 prompt；普通 `{ "message": "..." }` 请求保持原聊天路径。
 
 可用标准库 `unittest` 单独验证：
 
@@ -286,7 +287,9 @@ python -m unittest discover -s tests
 * 公共来源标签与公开事实；
 * 私密、无依据或 prompt-injection 问题的拒答规则；
 * prompt 不包含真实敏感值、完整 URL、query string、私有路径、邮箱、手机号或会话标识；
-* `app.py` 尚未 import 或调用 prompt builder，live route 仍保持 `{ "message": "..." }`。
+* live route 仍兼容 `{ "message": "..." }`；
+* `public_site` guide mode 调用 prompt builder；
+* guide mode 的 Flask session 只保存可见 `message`，不保存隐藏 prompt。
 
 ---
 
