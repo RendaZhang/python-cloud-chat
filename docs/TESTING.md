@@ -23,6 +23,7 @@
     - [聊天接口（C1/C2/C3）](#%E8%81%8A%E5%A4%A9%E6%8E%A5%E5%8F%A3c1c2c3)
   - [速率限制与边界用例](#%E9%80%9F%E7%8E%87%E9%99%90%E5%88%B6%E4%B8%8E%E8%BE%B9%E7%95%8C%E7%94%A8%E4%BE%8B)
   - [观测与排障](#%E8%A7%82%E6%B5%8B%E4%B8%8E%E6%8E%92%E9%9A%9C)
+  - [Chat Guide prompt builder tests](#chat-guide-prompt-builder-tests)
   - [数据清理（测试环境）](#%E6%95%B0%E6%8D%AE%E6%B8%85%E7%90%86%E6%B5%8B%E8%AF%95%E7%8E%AF%E5%A2%83)
   - [扩展方式（新增接口时怎么补用例）](#%E6%89%A9%E5%B1%95%E6%96%B9%E5%BC%8F%E6%96%B0%E5%A2%9E%E6%8E%A5%E5%8F%A3%E6%97%B6%E6%80%8E%E4%B9%88%E8%A1%A5%E7%94%A8%E4%BE%8B)
     - [用例模板（Markdown）](#%E7%94%A8%E4%BE%8B%E6%A8%A1%E6%9D%BFmarkdown)
@@ -34,7 +35,7 @@
 # CloudChat 后端测试手册
 
 - **作者**: 张人大 (Renda Zhang)
-- **最后更新**: August 13, 2025, 18:20 (UTC+08:00)
+- **最后更新**: July 03, 2026, 12:49 (UTC+08:00)
 
 ---
 
@@ -265,6 +266,27 @@ redis-cli -a $REDIS_PASSWORD KEYS 'pwreset:*'
 redis-cli -a $REDIS_PASSWORD TTL 'pwreset:<token>'
 redis-cli -a $REDIS_PASSWORD KEYS 'sess:*' | wc -l
 ```
+
+## Chat Guide prompt builder tests
+
+Slice 12.2 新增的 `chat_guide_prompt.py` 是纯后端 prompt boundary，尚未接入 live
+`/deepseek_chat`。
+
+可用标准库 `unittest` 单独验证：
+
+```bash
+python -m unittest discover -s tests
+```
+
+覆盖重点：
+
+* preset ID 与前端受控 ID 对齐；
+* unknown preset ID 安全 fallback；
+* 英文/中文 prompt framing；
+* 公共来源标签与公开事实；
+* 私密、无依据或 prompt-injection 问题的拒答规则；
+* prompt 不包含真实敏感值、完整 URL、query string、私有路径、邮箱、手机号或会话标识；
+* `app.py` 尚未 import 或调用 prompt builder，live route 仍保持 `{ "message": "..." }`。
 
 ---
 

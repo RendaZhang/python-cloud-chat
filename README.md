@@ -22,6 +22,7 @@
   - [项目文档](#%E9%A1%B9%E7%9B%AE%E6%96%87%E6%A1%A3)
     - [接口文档](#%E6%8E%A5%E5%8F%A3%E6%96%87%E6%A1%A3)
     - [Python 轻量级后端开发指南](#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
+    - [Chat Guide Prompt Boundary](#chat-guide-prompt-boundary)
     - [故障排查及 BUG 追踪](#%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%8F%8A-bug-%E8%BF%BD%E8%B8%AA)
     - [开发需求](#%E5%BC%80%E5%8F%91%E9%9C%80%E6%B1%82)
   - [🤝 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
@@ -33,7 +34,7 @@
 # Python 后端服务
 
 - **作者**: 张人大（Renda Zhang）
-- **最后更新**: June 21, 2026, 21:35 (UTC+08:00)
+- **最后更新**: July 03, 2026, 12:49 (UTC+08:00)
 
 ---
 
@@ -47,6 +48,7 @@
 * **密码找回**：`/auth/password/forgot|reset`，邮件通过 **阿里云 DirectMail (SMTP)** 发送；重置后支持**会话强制下线（简单版）**。
 * **健康检查**：`/auth/healthz` 同时探测 Redis 与 PostgreSQL。
 * **聊天能力**：`/deepseek_chat`（流式 JSON 行）与 `reset_chat`；应用会话 Cookie：`cc_app`。
+* **Chat Guide 基础设施**：后端公共知识包与纯 prompt builder 已存在，但尚未接入 live 聊天接口。
 * **路由前缀**：对内蓝图前缀 `/auth`；对外经 Nginx 为 `/cloudchat/auth/*`。
 * **计划**：Google / WeChat 登录、MFA、会话索引优化（避免扫描）。
 
@@ -237,6 +239,10 @@ curl -s https://www.rendazhang.com/cloudchat/auth/healthz
 ### Python 轻量级后端开发指南
 
 涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面，具体请参考文档内容：📄 [轻量级后端开发指南](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/LIGHTWEIGHT_BACKEND_DEVELOPMENT.md#python-%E8%BD%BB%E9%87%8F%E7%BA%A7%E5%90%8E%E7%AB%AF%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97)
+
+### Chat Guide Prompt Boundary
+
+后端公共知识包、受控 preset ID、拒答边界、双语 prompt builder 以及尚未接入 `/deepseek_chat` 的 live API 边界见：📄 [Chat Guide Prompt Boundary](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/CHAT_GUIDE_PROMPT_BOUNDARY.md#chat-guide-prompt-boundary)
 
 ### 故障排查及 BUG 追踪
 
