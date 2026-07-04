@@ -48,7 +48,8 @@
 * **密码找回**：`/auth/password/forgot|reset`，邮件通过 **阿里云 DirectMail (SMTP)** 发送；重置后支持**会话强制下线（简单版）**。
 * **健康检查**：`/auth/healthz` 同时探测 Redis 与 PostgreSQL。
 * **聊天能力**：`/deepseek_chat`（流式 JSON 行）与 `reset_chat`；应用会话 Cookie：`cc_app`。
-* **Chat Guide 基础设施**：后端公共知识包与纯 prompt builder 已存在，但尚未接入 live 聊天接口。
+* **Chat Guide opt-in mode**：后端公共知识包与 prompt builder 已通过 `/deepseek_chat` 的
+  `"guideMode": "public_site"` 请求形态接入；普通 `{ "message": "..." }` 聊天路径保持兼容。
 * **路由前缀**：对内蓝图前缀 `/auth`；对外经 Nginx 为 `/cloudchat/auth/*`。
 * **计划**：Google / WeChat 登录、MFA、会话索引优化（避免扫描）。
 
@@ -243,6 +244,10 @@ curl -s https://www.rendazhang.com/cloudchat/auth/healthz
 ### Chat Guide Prompt Boundary
 
 后端公共知识包、受控 preset ID、拒答边界、双语 prompt builder 以及 `/deepseek_chat` 的 opt-in guide mode 边界见：📄 [Chat Guide Prompt Boundary](https://github.com/RendaZhang/python-cloud-chat/blob/master/docs/CHAT_GUIDE_PROMPT_BOUNDARY.md#chat-guide-prompt-boundary)
+
+### Operations Maintenance Guide
+
+跨前端、后端、Nginx 与本地 roadmap 的公开安全维护命令索引见：📄 [Operations Maintenance Guide](https://github.com/RendaZhang/rendazhang/blob/master/docs/OPERATIONS.md#operations-maintenance-guide)
 
 ### 故障排查及 BUG 追踪
 
