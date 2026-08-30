@@ -100,6 +100,8 @@ class CloudChatServiceUnitTests(unittest.TestCase):
             "RuntimeMaxSec=180",
             "systemd-analyze verify",
             "useradd \\",
+            "getent passwd cloudchat | cut -d: -f6",
+            "getent passwd cloudchat | cut -d: -f7",
             "cmp --silent",
             "mv --force",
             "rollback_cloudchat_unit",
