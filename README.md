@@ -26,6 +26,7 @@
     - [故障排查及 BUG 追踪](#%E6%95%85%E9%9A%9C%E6%8E%92%E6%9F%A5%E5%8F%8A-bug-%E8%BF%BD%E8%B8%AA)
     - [开发需求](#%E5%BC%80%E5%8F%91%E9%9C%80%E6%B1%82)
   - [🤝 贡献指南](#-%E8%B4%A1%E7%8C%AE%E6%8C%87%E5%8D%97)
+    - [CI 质量门禁](#ci-%E8%B4%A8%E9%87%8F%E9%97%A8%E7%A6%81)
   - [🔐 License](#-license)
   - [📬 联系方式](#-%E8%81%94%E7%B3%BB%E6%96%B9%E5%BC%8F)
 
@@ -279,7 +280,16 @@ BUG 记录和修复状态请查看文档：📄 [后端 BUG 跟踪数据库](htt
   pre-commit run --all-files
   ```
 
-> ✅ 所有提交必须通过 pre-commit 检查；CI 会阻止不符合规范的 PR。
+### CI 质量门禁
+
+`.github/workflows/backend-ci.yml` 会在 Pull Request、推送到 `master` 以及手动触发时，使用
+Python 3.13.14 安装已提交的 `requirements.txt`，并执行依赖一致性、编译、Ruff、Black、
+标准库 `unittest` 与全部 pre-commit hooks。失败的检查会在对应提交或 PR 上显示为失败的
+GitHub Actions 状态。
+
+> 当前自动化测试集中在 Chat Guide prompt boundary 与相关路由源码契约，不等同于认证、
+> 数据库、Redis、流式响应或线上服务的完整集成测试。涉及这些行为的改动仍需按
+> `docs/TESTING.md` 执行与变更范围相符的授权测试。
 
 ---
 

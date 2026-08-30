@@ -4,6 +4,7 @@
 
 - [CloudChat 后端测试手册](#cloudchat-%E5%90%8E%E7%AB%AF%E6%B5%8B%E8%AF%95%E6%89%8B%E5%86%8C)
   - [简介](#%E7%AE%80%E4%BB%8B)
+  - [本地与 CI 质量门禁](#%E6%9C%AC%E5%9C%B0%E4%B8%8E-ci-%E8%B4%A8%E9%87%8F%E9%97%A8%E7%A6%81)
   - [速览](#%E9%80%9F%E8%A7%88)
   - [前置条件](#%E5%89%8D%E7%BD%AE%E6%9D%A1%E4%BB%B6)
   - [业务与接口矩阵](#%E4%B8%9A%E5%8A%A1%E4%B8%8E%E6%8E%A5%E5%8F%A3%E7%9F%A9%E9%98%B5)
@@ -42,6 +43,27 @@
 ## 简介
 
 **目的**：为测试/前端/运维提供一份可复制、可扩展的端到端测试指南，覆盖当前全部已实现接口（认证、密码找回、健康检查、聊天流式接口），并可按模板新增更多用例。
+
+---
+
+## 本地与 CI 质量门禁
+
+后端 GitHub Actions 在 Pull Request、推送到 `master` 与手动触发时使用 Python 3.13.14，
+安装已提交的 `requirements.txt`，并依次执行以下仓库级门禁：
+
+```bash
+python -m pip check
+python -m compileall app.py app_auth.py chat_guide_prompt.py db.py mailer.py models.py
+ruff check .
+black --check .
+python -m unittest discover -s tests
+pre-commit run --all-files
+```
+
+这些自动化门禁验证依赖一致性、语法、静态检查、格式和 `tests/` 中的聚焦测试。目前的
+`unittest` 覆盖 Chat Guide prompt boundary 及相关路由源码契约，不启动 Flask 服务，也不
+连接 Redis、PostgreSQL 或外部模型。因此它不能替代下文的认证、密码重置、健康检查、
+流式聊天和生产链路测试。
 
 ---
 

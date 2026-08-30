@@ -78,15 +78,22 @@ production environment files.
 
 ## Validation
 
-There is currently no broad pytest suite in this repository. Use the strongest
-available checks for the change scope:
+GitHub Actions runs the repository's backend quality gates on pull requests,
+pushes to `master`, and manual dispatches. Reproduce the same gates locally with
+the committed Python runtime before pushing:
 
 ```bash
-python -m compileall app.py app_auth.py db.py mailer.py models.py
+python -m pip check
+python -m compileall app.py app_auth.py chat_guide_prompt.py db.py mailer.py models.py
 ruff check .
 black --check .
+python -m unittest discover -s tests
 pre-commit run --all-files
 ```
+
+The standard-library tests under `tests/` are focused on the Chat Guide prompt
+boundary and related route-source contracts. They are not broad API,
+authentication, database, Redis, streaming, or production integration coverage.
 
 For API behavior changes, also run targeted curl checks against an authorized
 local or production-safe environment, following `docs/TESTING.md`. Do not run
