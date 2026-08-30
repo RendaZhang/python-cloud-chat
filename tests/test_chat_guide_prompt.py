@@ -332,14 +332,16 @@ class ChatGuidePromptTests(unittest.TestCase):
         ):
             self.assertNotIn(raw_secret_marker, combined)
 
-    def test_chat_route_preserves_default_message_contract(self):
+    def test_chat_route_preserves_default_message_contract_with_bounded_input(self):
         app_source = Path("app.py").read_text(encoding="utf-8")
 
-        self.assertIn('content.get("message")', app_source)
+        self.assertIn("content = require_json_object(request)", app_source)
+        self.assertIn("max_length=MAX_CHAT_MESSAGE_CHARS", app_source)
         self.assertIn(
             'session["messages"].append({"role": "user", "content": user_message})',
             app_source,
         )
+        self.assertIn('session["messages"] = trim_chat_history(', app_source)
         self.assertIn('model_messages = session["messages"]', app_source)
 
     def test_chat_route_wires_public_site_guide_mode_without_session_prompt(self):
@@ -350,12 +352,12 @@ class ChatGuidePromptTests(unittest.TestCase):
         )
         self.assertIn('CHAT_GUIDE_MODE_PUBLIC_SITE = "public_site"', app_source)
         self.assertIn(
-            'content.get("guideMode") == CHAT_GUIDE_MODE_PUBLIC_SITE',
+            "guide_mode == CHAT_GUIDE_MODE_PUBLIC_SITE",
             app_source,
         )
         self.assertIn("build_chat_guide_prompt(", app_source)
-        self.assertIn('preset_id=content.get("presetId")', app_source)
-        self.assertIn('locale=content.get("locale")', app_source)
+        self.assertIn("preset_id=preset_id", app_source)
+        self.assertIn("locale=locale", app_source)
         self.assertIn('"content": guide_prompt.prompt', app_source)
         self.assertIn(
             "response_gen = generate_deepseek_response(model_messages)",

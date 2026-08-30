@@ -92,10 +92,12 @@ source venv/bin/activate    # Windows: .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
 # 4) 基础环境（示例）
-export FLASK_SECRET_KEY=dev_secret
+export FLASK_SECRET_KEY=replace-with-at-least-16-characters
 export REDIS_PASSWORD=dev_redis_pass
 export DASHSCOPE_API_KEY=...
 export DEEPSEEK_API_KEY=...
+export DATABASE_URL=postgresql+psycopg2://cloudchat:***@127.0.0.1:6432/cloudchat
+export FRONTEND_BASE_URL=https://www.rendazhang.com
 
 # 5) 运行（开发）
 python app.py  # 或自行配置 debug server
@@ -123,14 +125,17 @@ python app.py  # 或自行配置 debug server
 # 基础
 PATH=/opt/cloudchat/venv/bin
 FLASK_SECRET_KEY=***
+TRUSTED_HOSTS=www.rendazhang.com,rendazhang.com,localhost,127.0.0.1,::1
 
 # 模型/第三方
 OPENAI_API_KEY=***
 DEEPSEEK_API_KEY=***
+DEEPSEEK_TIMEOUT_SECONDS=60
 DASHSCOPE_API_KEY=***
 
 # Redis
 REDIS_PASSWORD=***
+REDIS_TIMEOUT=5
 
 # 数据库（通过 PgBouncer 6432；psycopg2 驱动）
 DATABASE_URL=postgresql+psycopg2://cloudchat:***@127.0.0.1:6432/cloudchat
@@ -213,6 +218,13 @@ curl -s https://www.rendazhang.com/cloudchat/auth/healthz
 ## 安全基线
 
 * 强制 HTTPS（HSTS 已启用）与 `COOKIE_SECURE=1`
+* Flask 启动时要求非默认 `FLASK_SECRET_KEY`、`DEEPSEEK_API_KEY` 与 HTTPS
+  `FRONTEND_BASE_URL`，并通过 `TRUSTED_HOSTS` 拒绝未知 Host
+* JSON 请求体上限 16 KiB；认证字段按数据模型限制；Chat 消息上限 4,000 字符、历史上限
+  6 轮/64 KiB，并有独立的应用级 10 次/分钟配额
+* Redis 读/连接和模型请求有显式超时；模型 SDK 最多重试一次
+* 新密码重置链接使用 `/reset_password#token=...`，避免 token 进入 HTTP request target；
+  token 仍为短时、一次性 Redis 记录
 * 认证蓝图响应 `Cache-Control: no-store`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: SAMEORIGIN`、`Referrer-Policy: strict-origin-when-cross-origin`
 * 失败统一文案（登录/忘记密码防枚举）；注册/忘记密码限速
 * Argon2id；登录成功可按需 `check_needs_rehash` 平滑升级哈希
@@ -295,9 +307,10 @@ Pull Request 不会部署。`master` 的推送或手动触发只有在上述门�
 按变更范围决定是否更新依赖和重启 `cloudchat.service`，最后验证服务状态、内部健康与公开健康
 端点。不要用生产服务器上的手动拉取或重启掩盖失败的工作流。
 
-> 当前自动化测试集中在 Chat Guide prompt boundary 与相关路由源码契约，不等同于认证、
-> 数据库、Redis、流式响应或线上服务的完整集成测试。涉及这些行为的改动仍需按
-> `docs/TESTING.md` 执行与变更范围相符的授权测试。
+> 自动化测试覆盖 Chat Guide、请求/Host/字段/Chat 预算、重置链接、Redis/模型配置和聚焦
+> Flask 路由行为，但会 mock 数据库、Redis 与模型边界；它仍不等同于真实认证、数据存储、
+> 邮件、流式上游或线上服务的完整集成测试。涉及这些行为的改动仍需按 `docs/TESTING.md`
+> 执行与变更范围相符的授权测试。
 
 ---
 

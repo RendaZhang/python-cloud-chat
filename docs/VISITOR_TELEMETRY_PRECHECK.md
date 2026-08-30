@@ -198,7 +198,7 @@ Backend validation:
 
 - Unit tests for event allowlist, payload key allowlist, sensitive key rejection, sensitive value
   rejection, aggregate increment behavior, and rate-limit behavior.
-- `python -m compileall app.py app_auth.py db.py mailer.py models.py`
+- `python -m compileall app.py app_auth.py db.py mailer.py models.py security_policy.py`
 - `ruff check .`
 - `black --check .`
 - `pre-commit run --all-files`

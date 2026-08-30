@@ -52,6 +52,9 @@
 ### 请求与响应
 
 * **请求头**：`Content-Type: application/json`（除 GET）。
+* **请求边界**：带字段的 POST body 必须是 JSON object；应用级 body 上限为 16 KiB。字段类型
+  或长度不符合契约时在数据库、Redis、邮件或模型工作前返回 400；超出 body 上限返回 413。
+* **Host**：生产仅接受站点域名与显式 loopback Host；其他 Host 在路由阶段返回 400。
 * **响应格式**：
 
   * 成功：`{ "ok": true, ... }`
@@ -78,8 +81,10 @@
 | 登录   | IP & 账号 | 10 / 10分钟 |
 | 忘记密码 | IP      | 20 / 小时   |
 | 忘记密码 | 账号      | 5 / 小时    |
+| Chat | IP | 10 / 分钟 |
 
-> 触发限速返回 `429 Too Many Requests`（注册）或统一 401（登录场景防枚举）/ 200（忘记密码防枚举）。
+> 触发限速返回 `429 Too Many Requests`（注册/Chat）或统一 401（登录场景防枚举）/
+> 200（忘记密码防枚举）。应用只信任来自 loopback Nginx 的单一转发地址；直接请求使用 socket peer。
 
 ---
 
@@ -150,9 +155,10 @@
 
 * **Body**：`{ "identifier": "alice@example.com" }`
 * **响应**：
-  * **始终** `200 {"ok": true}`（防枚举）；生产环境通过邮件发送重置链接。
+  * 对合法 JSON object **始终** `200 {"ok": true}`（防枚举）；生产环境通过邮件发送重置链接。
   * 重置链接示例（15 分钟有效）：
-    * `https://www.rendazhang.com/reset_password?token=<TOKEN>`
+    * `https://www.rendazhang.com/reset_password#token=<TOKEN>`
+  * fragment 不会发送到 Nginx/Flask request target；前端读取后会立即从地址栏移除。
 
 ### 重置密码 — `POST /auth/password/reset`
 
@@ -181,7 +187,10 @@
 * **说明**：
 
   * 采用 **流式 JSON 行** 返回（`Transfer-Encoding: chunked`，`Content-Type: application/json`）。
-  * 会话历史存储在 `cc_app`（Flask-Session）中，默认保留 **`MAX_HISTORY=6`** 轮；系统提示词可通过环境变量覆盖。
+  * `message` 必须是去除首尾空白后非空的字符串，最多 4,000 个 Unicode 字符。
+  * 会话历史存储在 `cc_app`（Flask-Session）中，默认最多保留 **`MAX_HISTORY=6`** 个完整
+    轮次和 64 KiB；系统提示词最多 8,000 字符，可通过环境变量覆盖。
+  * 模型响应保持 2,000-token 上限；SDK 请求 timeout 为 60 秒，最多自动重试一次。
 * **请求体**：
 
 ```json
@@ -269,7 +278,8 @@ IP event fields、raw user-agent strings 和 private operational details。
 * **页面**：`/reset_password`。
 * **流程**：
 
-  1. 从 `location.search` 解析 `token`。
+  1. 优先从 `location.hash` 解析 `token`，兼容旧 `location.search` 链接，并立即通过
+     `history.replaceState` 清除地址栏中的 token。
   2. 前端对新密码做**同后端策略**校验（≥8 且至少两类字符）。
   3. `POST /cloudchat/auth/password/reset`，Body `{ token, password }`。
   4. 成功提示后引导去登录；失败（token 失效）提供“重新发送邮件”的入口 → `POST /cloudchat/auth/password/forgot`。
@@ -283,6 +293,7 @@ IP event fields、raw user-agent strings 和 private operational details。
 
 * 前端所有 `fetch` 需设置 `credentials: 'include'`；
 * 仅在 HTTPS 下工作（生产）。
+* 不得把 reset token 写入 console、telemetry、storage、截图或页面文本。
 
 ---
 
@@ -295,5 +306,6 @@ IP event fields、raw user-agent strings 和 private operational details。
 | 400 | 参数错误/弱口令/重置 token 失效 |
 | 401 | 未认证/登录失败（统一文案） |
 | 409 | 冲突（Email/Phone 已存在） |
-| 429 | 触发限速（注册）           |
+| 413 | JSON 请求体超过 16 KiB     |
+| 429 | 触发限速（注册/Chat）       |
 | 503 | 健康检查失败               |

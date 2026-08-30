@@ -55,12 +55,11 @@ def send_email(to: str, subject: str, body: str):
         s.sendmail(cfg["from_addr"], [to], msg.encode("utf-8"))
 
 
-def send_reset_email(to: str, token: str, reset_link: str, ttl_seconds: int):
+def send_reset_email(to: str, reset_link: str, ttl_seconds: int):
     """Send a password reset link to the user.
 
     Args:
         to: Recipient email address.
-        token: Raw reset token for logging or debugging.
         reset_link: Fully qualified URL the user should visit to reset password.
         ttl_seconds: Token validity duration in seconds; used in the email body
             to inform the user of expiry time.

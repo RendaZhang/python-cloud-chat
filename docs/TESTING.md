@@ -53,7 +53,7 @@
 
 ```bash
 python -m pip check
-python -m compileall app.py app_auth.py chat_guide_prompt.py db.py mailer.py models.py
+python -m compileall app.py app_auth.py chat_guide_prompt.py db.py mailer.py models.py security_policy.py
 ruff check .
 black --check .
 python -m unittest discover -s tests
@@ -61,8 +61,9 @@ pre-commit run --all-files
 ```
 
 这些自动化门禁验证依赖一致性、语法、静态检查、格式和 `tests/` 中的聚焦测试。目前的
-`unittest` 覆盖 Chat Guide prompt boundary 及相关路由源码契约，不启动 Flask 服务，也不
-连接 Redis、PostgreSQL 或外部模型。因此它不能替代下文的认证、密码重置、健康检查、
+`unittest` 覆盖 Chat Guide prompt boundary、配置失败关闭、Host/JSON/字段边界、应用级
+Chat 限速、会话预算、重置链接以及 Flask test client 路由契约。测试会 mock Redis、
+PostgreSQL、邮件和外部模型边界，因此不能替代下文的真实认证、密码重置、健康检查、
 流式聊天和生产链路测试。
 
 同一工作流的生产发布只在 `master` 推送或手动触发、且上述质量门禁全部成功后运行；
@@ -71,9 +72,9 @@ Pull Request 保持 CI-only。发布任务串行处理，部署并核对触发�
 Python 运行时代码、依赖变化或显式 `force_restart` 时才重启 `cloudchat.service`。每次发布
 都会核对服务状态、内部健康与公开健康端点。
 
-这些发布检查证明精确提交、受控重启与健康恢复，不会扩大现有 15 个聚焦单元测试的业务
-覆盖范围。工作流失败时应保留证据并通过正常提交修复；不得用手动生产拉取或重启把失败
-状态伪装成成功。
+这些发布检查证明精确提交、受控重启与健康恢复，不会自动扩大聚焦单元测试的业务覆盖
+范围。工作流失败时应保留证据并通过正常提交修复；不得用手动生产拉取或重启把失败状态
+伪装成成功。
 
 依赖改动还需要在隔离的 Python 3.13.14 临时环境中，对已提交的固定版本执行当前
 `pip-audit`。审计工具不应仅为本检查安装到生产虚拟环境：
@@ -147,13 +148,14 @@ curl -s https://www.rendazhang.com/cloudchat/auth/healthz
 ### 密码找回（Debug/生产双形态）
 
 * [ ] Debug：`forgot` 返回 `debug_token`；`reset` 第一次 200、第二次 400；旧会话 401、旧密码 401、新密码 200
-* [ ] 生产：`forgot` 始终 200；收到邮件链接 `/reset_password?token=...`；使用 token 成功 200；过期/非法 token 400
+* [ ] 生产：合法 `forgot` 请求始终 200；收到邮件链接 `/reset_password#token=...`；地址栏立即清除 token；使用 token 成功 200；过期/非法 token 400
 
 ### 速率限制
 
 * [ ] 注册：IP ≥ 11 次/小时 → 429；单 email ≥ 4 次/小时 → 429
 * [ ] 登录：同 IP 或同 identifier 连续 ≥ 11 次/10 分钟 → 401（统一文案）
 * [ ] 忘记密码：IP ≥ 21 次/小时 → **仍 200**；identifier ≥ 6 次/小时 → **仍 200**
+* [ ] Chat：同一可信客户端 IP 第 11 次/分钟 → 429，且不会调用模型
 
 ### 健康检查/观测
 
@@ -161,7 +163,9 @@ curl -s https://www.rendazhang.com/cloudchat/auth/healthz
 
 ### 聊天接口（流式）
 
-* [ ] `/deepseek_chat` 返回**逐行 JSON**；历史截断在 `MAX_HISTORY`；`/reset_chat` 可清空
+* [ ] `/deepseek_chat` 返回**逐行 JSON**；消息最多 4,000 字符；历史限制在 `MAX_HISTORY`
+  个完整轮次和 64 KiB；`/reset_chat` 可清空
+* [ ] 非 JSON object、错误字段类型返回 400；超过 16 KiB 的 JSON body 返回 413
 
 ---
 
@@ -238,7 +242,7 @@ curl -i -X POST https://www.rendazhang.com/cloudchat/auth/password/reset \
 curl -s -X POST https://www.rendazhang.com/cloudchat/auth/password/forgot \
   -H 'Content-Type: application/json' \
   -d '{"identifier":"alice@example.com"}'
-# 邮件链接示例： https://www.rendazhang.com/reset_password?token=...
+# 邮件链接示例： https://www.rendazhang.com/reset_password#token=...
 
 # 手动把邮件中的 token 粘到命令里：
 TOKEN='<PASTE_FROM_EMAIL>'
@@ -273,7 +277,9 @@ curl -s -X POST https://www.rendazhang.com/cloudchat/reset_chat
 
 ## 速率限制与边界用例
 
-> 速率限制依赖 `X-Forwarded-For`；如需模拟不同来源 IP，可自定义该头部。
+> 应用只在 socket peer 为 loopback 且 `X-Forwarded-For` 仅含一个合法 IP 时使用转发地址。
+> 公开 Nginx 会覆盖客户端提供的该头部，因此不要把生产请求自定义头部当作来源模拟证据；
+> IP 变化测试应通过 Flask test client 或受控 loopback 代理完成。
 
 ```bash
 # 注册超配额（期望 429）

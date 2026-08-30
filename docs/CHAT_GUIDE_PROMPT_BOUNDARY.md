@@ -180,7 +180,7 @@ venv/bin/python -m unittest discover -s tests
 Repository checks:
 
 ```bash
-venv/bin/python -m compileall app.py app_auth.py db.py mailer.py models.py chat_guide_prompt.py tests
+venv/bin/python -m compileall app.py app_auth.py db.py mailer.py models.py chat_guide_prompt.py security_policy.py tests
 venv/bin/ruff check .
 venv/bin/black --check .
 pre-commit run --all-files

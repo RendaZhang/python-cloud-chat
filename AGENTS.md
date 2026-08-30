@@ -84,7 +84,7 @@ the committed Python runtime before pushing:
 
 ```bash
 python -m pip check
-python -m compileall app.py app_auth.py chat_guide_prompt.py db.py mailer.py models.py
+python -m compileall app.py app_auth.py chat_guide_prompt.py db.py mailer.py models.py security_policy.py
 ruff check .
 black --check .
 python -m unittest discover -s tests
@@ -115,6 +115,15 @@ approval.
 - Authentication cookie behavior, password reset behavior, and rate limits are
   public API contracts. Update `docs/API.md` and `docs/TESTING.md` when these
   change.
+- Public JSON inputs, Host trust, Chat message/history/rate budgets, required
+  startup configuration, Redis/model timeouts, and reset-link construction are
+  centralized in `security_policy.py`. Keep route-specific business behavior in
+  `app.py` and `app_auth.py`; do not bypass the shared boundary with raw
+  `request.json` access.
+- New password-reset emails use `/reset_password#token=...`. The frontend accepts
+  that fragment plus legacy query links and immediately clears either form from
+  the address bar. Never log or persist a raw reset link or token outside the
+  existing short-lived Redis record and outbound email.
 - The health endpoint should remain safe for read-only uptime checks.
 
 ## Deployment

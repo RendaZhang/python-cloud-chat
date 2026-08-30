@@ -23,6 +23,10 @@
 
 本文档旨在为 Python 轻量级后端开发提供全面的指南，涵盖会话存储、数据库优化、API 设计、缓存策略等多个方面。通过模块化的结构，开发者可以根据需求灵活查阅相关内容。
 
+> 本文中的文件系统和 SQLite 方案是容量规划参考，不是当前生产配置。CloudChat 当前使用
+> Redis-backed Flask-Session；安全配置、请求边界和历史裁剪以 `security_policy.py` 与
+> `app.py` 为准，示例不能用弱默认 secret 或仅按消息条数裁剪生产会话。
+
 ---
 
 ## 轻量级会话存储方案（针对小内存服务器）
@@ -43,9 +47,10 @@
 ```python
 from flask import Flask
 from flask_session import Session
+from security_policy import required_env
 
 app = Flask(__name__)
-app.secret_key = os.getenv('FLASK_SECRET_KEY', 'default-secret-key')
+app.secret_key = required_env('FLASK_SECRET_KEY', min_length=16)
 
 # 文件系统会话存储配置
 app.config['SESSION_TYPE'] = 'filesystem'
@@ -67,12 +72,13 @@ mkdir -p /tmp/flask_sessions
 限制对话历史长度：
 
 ```python
-# 在添加消息前检查历史长度
-MAX_HISTORY = 5  # 只保留最近5轮对话
+from security_policy import MAX_CHAT_SESSION_BYTES, trim_chat_history
 
-if len(session['messages']) > MAX_HISTORY * 2 + 1:  # 系统消息 + 5轮对话
-    # 保留系统消息和最近的对话
-    session['messages'] = [session['messages'][0]] + session['messages'][-MAX_HISTORY*2:]
+session['messages'] = trim_chat_history(
+    session['messages'],
+    max_rounds=6,
+    max_bytes=MAX_CHAT_SESSION_BYTES,
+)
 ```
 
 如果用户量增长，可以考虑升级服务器或迁移到 Redis 会话存储。
@@ -117,7 +123,8 @@ Session(app)
 ```python
 import sqlite3
 
-MAX_HISTORY = 5  # 只保留最近5轮对话
+MAX_HISTORY = 6  # 与当前应用默认完整轮次预算一致
+MAX_HISTORY_ROWS = MAX_HISTORY * 2 + 1
 
 # 连接到 SQLite 数据库
 conn = sqlite3.connect('sessions.db')
@@ -136,11 +143,15 @@ cursor.execute('''
         ORDER BY timestamp DESC
         LIMIT ?
     )
-''', (session_id, session_id, MAX_HISTORY * 2 + 1))
+''', (session_id, session_id, MAX_HISTORY_ROWS))
 
 conn.commit()
 conn.close()
 ```
+
+SQLite 的行数限制仍需配合序列化字节上限；当前应用使用共享的 64 KiB 会话预算。若未来把
+聊天历史迁移到 SQL，应在写入事务中同时保留完整轮次并执行字节预算，而不是直接复制这个
+概念性查询。
 
 ---
 

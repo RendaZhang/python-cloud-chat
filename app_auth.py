@@ -12,6 +12,16 @@ import os
 import re
 import secrets
 import redis
+from security_policy import (
+    RequestValidationError,
+    build_reset_link,
+    positive_int_env,
+    rate_limit_allowed,
+    require_json_object,
+    required_https_origin,
+    string_field,
+    trusted_client_ip,
+)
 
 # ---- 配置 ----
 AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "cc_auth")
@@ -19,10 +29,14 @@ COOKIE_NAME = AUTH_COOKIE_NAME
 # 生产请设为 1；若需在 HTTP 下本机测试，设为 0
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "1") == "1"
 COOKIE_SAMESITE = "Lax"
-SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", str(7 * 24 * 3600)))
+SESSION_TTL_SECONDS = positive_int_env(
+    "SESSION_TTL_SECONDS", 7 * 24 * 3600, minimum=60, maximum=30 * 24 * 3600
+)
 RATE_LIMIT_LOGIN_PER_10MIN = 10
 # 密码找回配置
-PWRESET_TOKEN_TTL = int(os.getenv("PWRESET_TOKEN_TTL", "900"))  # 15分钟
+PWRESET_TOKEN_TTL = positive_int_env(
+    "PWRESET_TOKEN_TTL", 900, minimum=60, maximum=3600
+)  # 15分钟
 # 生产请设为 0
 DEBUG_RETURN_RESET_TOKEN = os.getenv("DEBUG_RETURN_RESET_TOKEN", "0") == "1"
 # 重置后强制下线
@@ -32,14 +46,18 @@ PWRESET_REVOKE_SESSIONS = os.getenv("PWRESET_REVOKE_SESSIONS", "1") == "1"
 REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 REDIS_DB = int(os.getenv("REDIS_DB", 0))
-REDIS_TIMEOUT = int(os.getenv("REDIS_TIMEOUT", 5))
+REDIS_TIMEOUT = positive_int_env("REDIS_TIMEOUT", 5, maximum=30)
 REDIS_PASSWORD = os.getenv("REDIS_PASSWORD")
+FRONTEND_BASE_URL = required_https_origin("FRONTEND_BASE_URL")
 redis_client = redis.Redis(
     host=REDIS_HOST,
     port=REDIS_PORT,
     db=REDIS_DB,
     password=REDIS_PASSWORD,
     decode_responses=True,
+    socket_timeout=REDIS_TIMEOUT,
+    socket_connect_timeout=REDIS_TIMEOUT,
+    retry_on_timeout=False,
 )
 
 ph = PasswordHasher()
@@ -54,18 +72,14 @@ def _norm_email(s: str | None) -> str | None:
 
 
 def _client_ip() -> str:
-    # 适配 Nginx 反代
-    fwd = request.headers.get("X-Forwarded-For")
-    return fwd.split(",")[0].strip() if fwd else request.remote_addr or "0.0.0.0"
+    return trusted_client_ip(
+        request.remote_addr, request.headers.get("X-Forwarded-For")
+    )
 
 
 def _rate_limit(key: str, limit: int, window_sec: int) -> bool:
-    """返回是否允许。使用 Redis 计数 + 过期。"""
-    pipe = redis_client.pipeline()
-    pipe.incr(key)
-    pipe.expire(key, window_sec)
-    count, _ = pipe.execute()
-    return int(count) <= limit
+    """返回是否允许。使用 Redis 固定窗口计数。"""
+    return rate_limit_allowed(redis_client, key, limit, window_sec)
 
 
 def _issue_session(user_id: int):
@@ -126,15 +140,20 @@ def _password_ok(p: str) -> bool:
     return classes >= 2
 
 
+@auth.errorhandler(RequestValidationError)
+def _request_validation_error(error):
+    return jsonify({"ok": False, "error": str(error)}), 400
+
+
 # ---- 路由 ----
 # 注册接口会返回 409 表示邮箱/手机号已被占用（注册场景允许提示唯一性冲突）。
 @auth.post("/register")
 def register():
-    data = request.get_json(silent=True) or {}
-    email = _norm_email(data.get("email"))
-    phone = (data.get("phone") or "").strip() or None
-    pwd = data.get("password") or ""
-    display_name = (data.get("display_name") or "").strip() or None
+    data = require_json_object(request)
+    email = _norm_email(string_field(data, "email", max_length=254, strip=True))
+    phone = string_field(data, "phone", max_length=32, strip=True) or None
+    pwd = string_field(data, "password", max_length=128) or ""
+    display_name = string_field(data, "display_name", max_length=80, strip=True) or None
 
     if not email:
         return jsonify({"ok": False, "error": "email required"}), 400
@@ -190,9 +209,9 @@ def register():
 # 登录接口统一返回 “Invalid credentials”，避免账号枚举。
 @auth.post("/login")
 def login():
-    data = request.get_json(silent=True) or {}
-    identifier = (data.get("identifier") or "").strip()
-    pwd = data.get("password") or ""
+    data = require_json_object(request)
+    identifier = string_field(data, "identifier", max_length=254, strip=True) or ""
+    pwd = string_field(data, "password", max_length=128) or ""
     if not identifier or not pwd:
         return jsonify({"ok": False, "error": "Invalid credentials"}), 401
 
@@ -296,8 +315,10 @@ def password_forgot():
     输入: { "identifier": "<email>" }
     统一返回 200（防枚举）。开发期可返回 debug_token；生产请关闭并发送邮件。
     """
-    data = request.get_json(silent=True) or {}
-    identifier = (data.get("identifier") or "").strip().lower()
+    data = require_json_object(request)
+    identifier = (
+        string_field(data, "identifier", max_length=254, strip=True) or ""
+    ).lower()
 
     # 基础限速：每小时 IP 20 次 / 单 identifier 5 次
     if not _rate_limit(f"rl:pwf:ip:{_client_ip()}", 20, 3600) or not _rate_limit(
@@ -324,14 +345,8 @@ def password_forgot():
                     try:
                         from mailer import send_reset_email
 
-                        base = os.getenv("FRONTEND_BASE_URL") or (
-                            request.host_url.rstrip("/")
-                        )
-                        # 前端路由示例：/reset_password?token=...
-                        reset_link = f"{base}/reset_password?token={token}"
-                        send_reset_email(
-                            user.email, token, reset_link, PWRESET_TOKEN_TTL
-                        )
+                        reset_link = build_reset_link(FRONTEND_BASE_URL, token)
+                        send_reset_email(user.email, reset_link, PWRESET_TOKEN_TTL)
                     except Exception as e:
                         current_app.logger.exception("send reset email failed: %s", e)
 
@@ -346,9 +361,9 @@ def password_forgot():
 # 后续要提效，再引入 user_sess:<uid> 反向索引。
 @auth.post("/password/reset")
 def password_reset():
-    data = request.get_json(silent=True) or {}
-    token = (data.get("token") or "").strip()
-    new_pwd = data.get("password") or ""
+    data = require_json_object(request)
+    token = string_field(data, "token", max_length=256, strip=True) or ""
+    new_pwd = string_field(data, "password", max_length=128) or ""
 
     if not token or not _password_ok(new_pwd):
         return jsonify({"ok": False, "error": "Invalid token or weak password"}), 400
