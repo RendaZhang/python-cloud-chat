@@ -113,18 +113,21 @@ approval.
 
 ## Deployment
 
-- Normal backend release flow:
-  1. Commit and push this repository.
-  2. On the authorized production server, update the backend Git worktree with:
-
-     ```bash
-     cd /opt/cloudchat
-     git pull --ff-only origin master
-     ```
-
-  3. For code or dependency changes, update the virtual environment if needed
-     and restart only `cloudchat.service`.
-  4. For docs-only changes, no service restart is needed.
+- `.github/workflows/backend-ci.yml` owns the normal backend release flow.
+  Pull Requests run quality gates only. A push to `master`, or a manual dispatch
+  targeting `master`, deploys only after the same quality job succeeds.
+- The deploy job serializes production updates, refuses tracked production
+  changes or non-fast-forward targets, and verifies that the production
+  checkout ends at the exact GitHub Actions commit.
+- `requirements.txt` changes update the existing Python 3.13.14 virtual
+  environment. Runtime Python or dependency changes restart only
+  `cloudchat.service`; docs/workflow-only changes synchronize without a
+  restart. The manual `force_restart` input exercises the same controlled
+  one-service restart path.
+- Every deployment verifies the service state plus internal and public health.
+  Do not manually pull or restart production to hide a failed workflow; repair
+  the workflow with a normal follow-up commit or report an explicitly approved
+  recovery action.
 
 - Do not restart Nginx, Redis, PostgreSQL, or unrelated services for backend-only
   changes unless the task explicitly requires it.

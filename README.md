@@ -107,6 +107,9 @@ python app.py  # 或自行配置 debug server
 * **服务**：`/etc/systemd/system/cloudchat.service`（使用 venv 与 EnvironmentFile）
 * **内存优化**：Redis/CloudChat/PostgreSQL/PgBouncer 均设置 `MemoryMax` 与 OOM 分级
 * **会话**：Redis 本机；PostgreSQL 本机 5432；PgBouncer 监听 6432
+* **自动发布**：推送到 `master` 后，GitHub Actions 先完成质量门禁，再将同一个提交精确同步
+  到生产 Git 工作树。文档或工作流变更不重启服务；Python 运行时代码或依赖变更只重启
+  `cloudchat.service`。手动触发可用 `force_restart` 验证同一受控重启与健康检查路径。
 
 > 详细的运维参数、systemd override、内核与 journald 优化，见 Nginx 项目下的文档内容 ：📄 [CloudChat 服务器配置运行手册](https://github.com/RendaZhang/nginx-conf/blob/master/docs/SERVER_RUNBOOK.md)。
 
@@ -286,6 +289,11 @@ BUG 记录和修复状态请查看文档：📄 [后端 BUG 跟踪数据库](htt
 Python 3.13.14 安装已提交的 `requirements.txt`，并执行依赖一致性、编译、Ruff、Black、
 标准库 `unittest` 与全部 pre-commit hooks。失败的检查会在对应提交或 PR 上显示为失败的
 GitHub Actions 状态。
+
+Pull Request 不会部署。`master` 的推送或手动触发只有在上述门禁成功后才进入串行生产发布：
+工作流拒绝带有已跟踪改动或无法快进的生产工作树，部署并核对当前 Actions 的精确提交，
+按变更范围决定是否更新依赖和重启 `cloudchat.service`，最后验证服务状态、内部健康与公开健康
+端点。不要用生产服务器上的手动拉取或重启掩盖失败的工作流。
 
 > 当前自动化测试集中在 Chat Guide prompt boundary 与相关路由源码契约，不等同于认证、
 > 数据库、Redis、流式响应或线上服务的完整集成测试。涉及这些行为的改动仍需按

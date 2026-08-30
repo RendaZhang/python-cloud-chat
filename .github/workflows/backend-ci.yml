@@ -6,6 +6,12 @@ on:
     branches:
       - master
   workflow_dispatch:
+    inputs:
+      force_restart:
+        description: Restart cloudchat.service after deploying the exact commit
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -54,3 +60,204 @@ jobs:
 
       - name: Run pre-commit hooks
         run: pre-commit run --all-files
+
+  deploy:
+    name: Deploy exact commit to production
+    needs: quality
+    if: >-
+      github.ref == 'refs/heads/master' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: backend-production
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      TARGET_SHA: ${{ github.sha }}
+      FORCE_RESTART: >-
+        ${{ github.event_name == 'workflow_dispatch' &&
+        inputs.force_restart == true && 'true' || 'false' }}
+
+    steps:
+      - name: Validate deployment configuration
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]
+          [[ "$DEPLOY_PATH" == /* && "$DEPLOY_PATH" != *..* ]]
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$FORCE_RESTART" == "true" || "$FORCE_RESTART" == "false" ]]
+          test -n "$SSH_PRIVATE_KEY"
+
+      - name: Prepare deployment SSH identity
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          umask 077
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/cloudchat_deploy_key"
+          ssh-keyscan -H -T 15 "$DEPLOY_HOST" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/cloudchat_deploy_key" "$HOME/.ssh/known_hosts"
+
+      - name: Synchronize exact commit and verify health
+        run: |
+          set -euo pipefail
+          ssh \
+            -i "$HOME/.ssh/cloudchat_deploy_key" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            bash -s -- "$DEPLOY_PATH" "$TARGET_SHA" "$FORCE_RESTART" <<'REMOTE'
+          set -euo pipefail
+
+          deploy_path="$1"
+          target_sha="$2"
+          force_restart="$3"
+
+          [[ "$deploy_path" == /* && "$deploy_path" != *..* ]]
+          [[ "$target_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$force_restart" == "true" || "$force_restart" == "false" ]]
+
+          cd "$deploy_path"
+
+          branch="$(git branch --show-current)"
+          if [[ "$branch" != "master" ]]; then
+            printf 'Deployment refused: expected master branch, found %s.\n' "$branch" >&2
+            exit 1
+          fi
+
+          if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+            printf 'Deployment refused: production has tracked changes.\n' >&2
+            exit 1
+          fi
+
+          prior_sha="$(git rev-parse HEAD)"
+          printf 'Prior SHA: %s\n' "$prior_sha"
+          printf 'Target SHA: %s\n' "$target_sha"
+
+          git fetch --no-tags origin master:refs/remotes/origin/master
+          git cat-file -e "$target_sha^{commit}"
+
+          if ! git merge-base --is-ancestor "$target_sha" refs/remotes/origin/master; then
+            printf 'Deployment refused: target is not on origin/master.\n' >&2
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "$prior_sha" "$target_sha"; then
+            printf 'Deployment refused: target is not a fast-forward.\n' >&2
+            exit 1
+          fi
+
+          requirements_changed=false
+          runtime_changed=false
+          while IFS= read -r changed_path; do
+            case "$changed_path" in
+              requirements.txt)
+                requirements_changed=true
+                ;;
+              tests/*)
+                ;;
+              *.py)
+                runtime_changed=true
+                ;;
+            esac
+          done < <(git diff --name-only "$prior_sha" "$target_sha")
+
+          if [[ "$prior_sha" != "$target_sha" ]]; then
+            git merge --ff-only "$target_sha"
+          fi
+
+          final_sha="$(git rev-parse HEAD)"
+          if [[ "$final_sha" != "$target_sha" ]]; then
+            printf 'Deployment failed: final SHA does not match target.\n' >&2
+            exit 1
+          fi
+
+          if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+            printf 'Deployment failed: tracked changes appeared after synchronization.\n' >&2
+            exit 1
+          fi
+
+          python_version="$(venv/bin/python --version 2>&1)"
+          if [[ "$python_version" != "Python 3.13.14" ]]; then
+            printf 'Deployment failed: unexpected production Python runtime.\n' >&2
+            exit 1
+          fi
+          printf 'Production Python: %s\n' "$python_version"
+
+          if [[ "$requirements_changed" == "true" ]]; then
+            venv/bin/python -m pip install --requirement requirements.txt
+          fi
+          venv/bin/python -m pip check
+
+          restart_required=false
+          if [[ "$runtime_changed" == "true" ||
+                "$requirements_changed" == "true" ||
+                "$force_restart" == "true" ]]; then
+            restart_required=true
+          fi
+
+          printf 'Final SHA: %s\n' "$final_sha"
+          printf 'Requirements changed: %s\n' "$requirements_changed"
+          printf 'Runtime Python changed: %s\n' "$runtime_changed"
+          printf 'Force restart: %s\n' "$force_restart"
+          printf 'Restart required: %s\n' "$restart_required"
+
+          if [[ "$restart_required" == "true" ]]; then
+            systemctl restart cloudchat.service
+          fi
+
+          service_state="$(systemctl is-active cloudchat.service)"
+          if [[ "$service_state" != "active" ]]; then
+            printf 'Deployment failed: cloudchat.service is %s.\n' "$service_state" >&2
+            exit 1
+          fi
+          printf 'cloudchat.service: %s\n' "$service_state"
+
+          health_is_ready() {
+            local health_url="$1"
+            local health_json
+
+            health_json="$(curl --fail --silent --show-error --max-time 10 "$health_url")" || return 1
+            HEALTH_JSON="$health_json" venv/bin/python - <<'PY'
+          import json
+          import os
+
+          health = json.loads(os.environ["HEALTH_JSON"])
+          if not all(health.get(key) is True for key in ("ok", "redis", "db")):
+              raise SystemExit(1)
+          PY
+          }
+
+          wait_for_health() {
+            local health_name="$1"
+            local health_url="$2"
+            local attempt
+
+            for attempt in {1..30}; do
+              if health_is_ready "$health_url"; then
+                printf '%s health: ok=true redis=true db=true\n' "$health_name"
+                return 0
+              fi
+              sleep 2
+            done
+
+            printf 'Deployment failed: %s health did not recover.\n' "$health_name" >&2
+            return 1
+          }
+
+          wait_for_health internal http://127.0.0.1:5000/auth/healthz
+          wait_for_health public https://www.rendazhang.com/cloudchat/auth/healthz
+          REMOTE
+
+      - name: Remove deployment SSH identity
+        if: always()
+        run: |
+          rm -f "$HOME/.ssh/cloudchat_deploy_key" "$HOME/.ssh/known_hosts"
