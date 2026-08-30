@@ -91,6 +91,12 @@ python -m unittest discover -s tests
 pre-commit run --all-files
 ```
 
+For dependency changes, also run a current `pip-audit` against the committed
+requirements from an isolated temporary environment. Do not add audit tooling
+to the production virtualenv solely to run this check. Record any remaining
+advisory by package, version, affected path, mitigation, and fixed-version
+availability instead of treating a raw finding count as exploitability proof.
+
 The standard-library tests under `tests/` are focused on the Chat Guide prompt
 boundary and related route-source contracts. They are not broad API,
 authentication, database, Redis, streaming, or production integration coverage.

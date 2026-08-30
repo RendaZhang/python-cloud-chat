@@ -9,7 +9,6 @@ from chat_guide_prompt import (
     normalize_chat_guide_locale,
 )
 
-
 EXPECTED_FRONTEND_PRESET_IDS = (
     "who_is_renda",
     "personalweb_proof",
