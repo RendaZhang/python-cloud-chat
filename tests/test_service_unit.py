@@ -112,6 +112,16 @@ class CloudChatServiceUnitTests(unittest.TestCase):
             with self.subTest(marker=marker):
                 self.assertIn(marker, self.workflow_text)
 
+    def test_live_health_wait_precedes_runtime_isolation_assertion(self):
+        health_check = self.workflow_text.rfind(
+            "internal http://127.0.0.1:5000/auth/healthz"
+        )
+        isolation_check = self.workflow_text.rfind(
+            "cloudchat.service 5000 127.0.0.1:5000"
+        )
+        self.assertGreater(health_check, 0)
+        self.assertGreater(isolation_check, health_check)
+
 
 if __name__ == "__main__":
     unittest.main()

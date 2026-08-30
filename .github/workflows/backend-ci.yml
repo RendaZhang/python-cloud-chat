@@ -249,18 +249,36 @@ jobs:
             local unit_name="$1"
             local port="$2"
             local expected_address="$3"
+            local effective_group
+            local effective_user
             local main_pid
             local process_user
 
-            [[ "$(systemctl show "$unit_name" --property=User --value)" == "cloudchat" ]]
-            [[ "$(systemctl show "$unit_name" --property=Group --value)" == "cloudchat" ]]
+            effective_user="$(systemctl show "$unit_name" --property=User --value)"
+            effective_group="$(systemctl show "$unit_name" --property=Group --value)"
+            if [[ "$effective_user" != "cloudchat" || "$effective_group" != "cloudchat" ]]; then
+              printf 'Isolation check failed: effective service identity is not cloudchat.\n' >&2
+              return 1
+            fi
 
             main_pid="$(systemctl show "$unit_name" --property=MainPID --value)"
-            [[ "$main_pid" =~ ^[0-9]+$ && "$main_pid" -gt 1 ]]
+            if [[ ! "$main_pid" =~ ^[0-9]+$ || "$main_pid" -le 1 ]]; then
+              printf 'Isolation check failed: service has no live main PID.\n' >&2
+              return 1
+            fi
             process_user="$(ps -o user= -p "$main_pid" | tr -d '[:space:]')"
-            [[ "$process_user" == "cloudchat" ]]
-            grep -Eq '^CapBnd:[[:space:]]+0{16}$' "/proc/$main_pid/status"
-            listener_is_exact "$port" "$expected_address"
+            if [[ "$process_user" != "cloudchat" ]]; then
+              printf 'Isolation check failed: main process is not owned by cloudchat.\n' >&2
+              return 1
+            fi
+            if ! grep -Eq '^CapBnd:[[:space:]]+0{16}$' "/proc/$main_pid/status"; then
+              printf 'Isolation check failed: capability bounding set is not empty.\n' >&2
+              return 1
+            fi
+            if ! listener_is_exact "$port" "$expected_address"; then
+              printf 'Isolation check failed: listener is not the sole expected loopback socket.\n' >&2
+              return 1
+            fi
           }
 
           ensure_cloudchat_account() {
@@ -446,13 +464,13 @@ jobs:
             printf 'Deployment failed: installed service unit drifted from the exact commit.\n' >&2
             deployment_ok=false
           fi
+          if [[ "$deployment_ok" == "true" ]] && ! wait_for_health \
+            internal http://127.0.0.1:5000/auth/healthz; then
+            deployment_ok=false
+          fi
           if [[ "$deployment_ok" == "true" ]] && ! service_process_is_isolated \
             cloudchat.service 5000 127.0.0.1:5000; then
             printf 'Deployment failed: live identity, capability, or listener check failed.\n' >&2
-            deployment_ok=false
-          fi
-          if [[ "$deployment_ok" == "true" ]] && ! wait_for_health \
-            internal http://127.0.0.1:5000/auth/healthz; then
             deployment_ok=false
           fi
           if [[ "$deployment_ok" == "true" ]] && ! wait_for_health \
