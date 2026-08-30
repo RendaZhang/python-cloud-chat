@@ -70,11 +70,32 @@ PostgreSQL、邮件和外部模型边界，因此不能替代下文的真实认�
 Pull Request 保持 CI-only。发布任务串行处理，部署并核对触发运行的精确提交，拒绝有已跟踪
 改动或无法快进的生产工作树。只有 `requirements.txt` 变化时才更新生产虚拟环境，只有
 Python 运行时代码、依赖变化或显式 `force_restart` 时才重启 `cloudchat.service`。每次发布
-都会核对服务状态、内部健康与公开健康端点。
+都会核对服务状态、内部健康与公开健康端点。`deploy/cloudchat.service` 是生产规范单元；
+单元内容变化或服务器单元漂移也会触发受控重启。替换前，workflow 会创建/核对锁定的
+`cloudchat` 系统账号，并在 `127.0.0.1:5001` 以独立运行目录启动候选，验证：
+
+- `systemd-analyze verify` 通过；
+- 主进程身份为 `cloudchat`，capability bounding set 为空；
+- 只存在精确的回环监听；
+- Redis、PostgreSQL 与整体健康均为 true。
+
+候选清理后才备份并安装正式单元。正式服务的身份、监听、规范单元一致性或健康失败时，
+workflow 会恢复之前的单元并尝试恢复 CloudChat；不会重启 Nginx、Redis、PostgreSQL 或
+PgBouncer。生产验证时只检查 EnvironmentFile 的 root 所有权和 0600 模式，不读取内容。
 
 这些发布检查证明精确提交、受控重启与健康恢复，不会自动扩大聚焦单元测试的业务覆盖
 范围。工作流失败时应保留证据并通过正常提交修复；不得用手动生产拉取或重启把失败状态
 伪装成成功。
+
+规范单元的聚焦测试可单独运行：
+
+```bash
+python -m unittest tests.test_service_unit
+```
+
+该测试检查专用身份、回环绑定、状态目录、capability/文件系统/network-family/resource
+边界，以及 workflow 的候选、安装和回滚契约。Linux 上的权威语法与运行时兼容性仍由生产
+候选单元验证承担；macOS 本地测试不会假装执行 systemd。
 
 依赖改动还需要在隔离的 Python 3.13.14 临时环境中，对已提交的固定版本执行当前
 `pip-audit`。审计工具不应仅为本检查安装到生产虚拟环境：

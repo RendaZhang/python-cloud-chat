@@ -81,10 +81,12 @@ Python Cloud Chat 是一个基于 Flask 的轻量级后端服务，提供用户�
 
 ### 后续加固
 
-- [ ] `cloudchat.service` 当前以 `User=root` 运行，需迁移到专用低权限用户。
-- [ ] Gunicorn 当前绑定 `0.0.0.0:5000`；虽公网 5000 端口当前不可达，仍应改为 `127.0.0.1:5000`，仅允许 Nginx 本机反代。
+- [x] `cloudchat.service` 使用仓库内规范单元和锁定的 `cloudchat` 系统账号运行；代码、venv
+  和 root-only EnvironmentFile 仍由特权部署边界拥有。
+- [x] Gunicorn 只绑定 `127.0.0.1:5000`，并由自动部署核对唯一回环监听、空 capability
+  边界和内部/公开健康。
 - [ ] 对 `/cloudchat/auth/healthz` 建立部署后检查脚本，区分本机 Nginx 响应时间和公网链路偶发超时。
-- [ ] 核对 Nginx 缓存规则对鉴权接口的影响，确保带用户态或 `Cache-Control: no-store` 的响应不会被缓存。
+- [x] Nginx 动态缓存仅允许精确公开测试端点；鉴权、健康、Chat 和其他 API 不进入代理缓存。
 
 ---
 

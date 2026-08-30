@@ -134,18 +134,30 @@ approval.
 - The deploy job serializes production updates, refuses tracked production
   changes or non-fast-forward targets, and verifies that the production
   checkout ends at the exact GitHub Actions commit.
+- `deploy/cloudchat.service` is the canonical production unit. The deploy job
+  keeps the checkout, venv, environment file, and service management root-owned,
+  while the Gunicorn/Flask process runs as the locked `cloudchat` system user and
+  binds only `127.0.0.1:5000`.
+- Unit installation must remain fail-safe: validate the dedicated account and
+  unit, prove an isolated `127.0.0.1:5001` candidate, back up the prior unit,
+  install atomically, and restore the prior unit if identity, listener, service,
+  or health checks fail. Never print or loosen the root-only EnvironmentFile.
 - `requirements.txt` changes update the existing Python 3.13.14 virtual
   environment. Runtime Python or dependency changes restart only
-  `cloudchat.service`; docs/workflow-only changes synchronize without a
-  restart. The manual `force_restart` input exercises the same controlled
-  one-service restart path.
-- Every deployment verifies the service state plus internal and public health.
+  `cloudchat.service`; canonical-unit changes or drift also require a restart,
+  while docs/workflow-only changes synchronize without one. The manual
+  `force_restart` input exercises the same controlled one-service restart path.
+- Every deployment verifies canonical-unit equality, non-root identity, empty
+  capabilities, the sole loopback listener, service state, and internal/public
+  health.
   Do not manually pull or restart production to hide a failed workflow; repair
   the workflow with a normal follow-up commit or report an explicitly approved
   recovery action.
 
 - Do not restart Nginx, Redis, PostgreSQL, or unrelated services for backend-only
   changes unless the task explicitly requires it.
+- Do not hand-edit `/etc/systemd/system/cloudchat.service` as a lasting fix.
+  Change and test the tracked canonical unit, then use the exact-SHA workflow.
 
 ## Security Rules
 

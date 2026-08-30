@@ -106,12 +106,21 @@ python app.py  # 或自行配置 debug server
 ### 生产部署（Ubuntu 24 + Nginx + systemd）
 
 * **反代**：Nginx 挂载 `/cloudchat/*` 到后端 `127.0.0.1:5000`
-* **服务**：`/etc/systemd/system/cloudchat.service`（使用 venv 与 EnvironmentFile）
+* **服务**：仓库中的 `deploy/cloudchat.service` 是规范来源，并安装到
+  `/etc/systemd/system/cloudchat.service`
+* **运行身份**：Git 工作树、venv 与服务管理继续由 root 部署流程拥有；Gunicorn/Flask
+  进程使用锁定的 `cloudchat` 系统账号，只监听 `127.0.0.1:5000`
+* **配置边界**：`/etc/cloudchat/cloudchat.env` 保持 root-only 0600，由 systemd 在降权前读取；
+  不要把环境文件改成应用账号可读
+* **沙箱**：应用代码只读，运行时和状态写入 systemd 管理的 `/run/cloudchat` 与
+  `/var/lib/cloudchat`，同时清空进程 capability 边界并限制设备、home、namespace 与内核面
 * **内存优化**：Redis/CloudChat/PostgreSQL/PgBouncer 均设置 `MemoryMax` 与 OOM 分级
 * **会话**：Redis 本机；PostgreSQL 本机 5432；PgBouncer 监听 6432
 * **自动发布**：推送到 `master` 后，GitHub Actions 先完成质量门禁，再将同一个提交精确同步
-  到生产 Git 工作树。文档或工作流变更不重启服务；Python 运行时代码或依赖变更只重启
-  `cloudchat.service`。手动触发可用 `force_restart` 验证同一受控重启与健康检查路径。
+  到生产 Git 工作树。工作流会检测规范单元漂移；需要变更单元时先用独立状态目录在
+  `127.0.0.1:5001` 运行候选并验证身份、capability、监听和完整健康，再备份/安装并只重启
+  `cloudchat.service`。正式验证失败会恢复之前的单元。文档或普通 workflow 变更不重启；
+  Python 代码、依赖、单元变化或显式 `force_restart` 才触发受控重启。
 
 > 详细的运维参数、systemd override、内核与 journald 优化，见 Nginx 项目下的文档内容 ：📄 [CloudChat 服务器配置运行手册](https://github.com/RendaZhang/nginx-conf/blob/master/docs/SERVER_RUNBOOK.md)。
 
@@ -304,8 +313,10 @@ GitHub Actions 状态。
 
 Pull Request 不会部署。`master` 的推送或手动触发只有在上述门禁成功后才进入串行生产发布：
 工作流拒绝带有已跟踪改动或无法快进的生产工作树，部署并核对当前 Actions 的精确提交，
-按变更范围决定是否更新依赖和重启 `cloudchat.service`，最后验证服务状态、内部健康与公开健康
-端点。不要用生产服务器上的手动拉取或重启掩盖失败的工作流。
+按变更范围决定是否更新依赖和重启 `cloudchat.service`。仓库内规范单元会经过专用锁定账号、
+`systemd-analyze verify`、备用回环端口候选、单元备份与回滚保护；每次部署最后都核对规范单元
+一致性、非 root 主进程、空 capability 边界、唯一回环监听、服务状态、内部健康与公开健康。
+不要用生产服务器上的手动拉取或重启掩盖失败的工作流。
 
 > 自动化测试覆盖 Chat Guide、请求/Host/字段/Chat 预算、重置链接、Redis/模型配置和聚焦
 > Flask 路由行为，但会 mock 数据库、Redis 与模型边界；它仍不等同于真实认证、数据存储、
