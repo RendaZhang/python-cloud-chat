@@ -128,6 +128,9 @@ approval.
 
 ## Deployment
 
+- Pure release contracts in `scripts/backend_release/` are prepared only and do not
+  replace the live workflow. See `docs/BACKEND_RELEASE_RECOVERY.md` for the fixture-only
+  boundary, unresolved resource/retention gates, and later integration requirements.
 - `.github/workflows/backend-ci.yml` owns the normal backend release flow.
   Pull Requests run quality gates only. A push to `master`, or a manual dispatch
   targeting `master`, deploys only after the same quality job succeeds.

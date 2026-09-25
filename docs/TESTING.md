@@ -48,6 +48,11 @@
 
 ## 本地与 CI 质量门禁
 
+Prepared release-contract tests are documented in
+[Backend Release Recovery Contracts](BACKEND_RELEASE_RECOVERY.md). They validate pure
+fixture declarations and decisions only, not systemd, package installation, production
+capacity or working rollback. The current live deployment behavior below is unchanged.
+
 后端 GitHub Actions 在 Pull Request、推送到 `master` 与手动触发时使用 Python 3.13.14，
 安装已提交的 `requirements.txt`，并依次执行以下仓库级门禁：
 
