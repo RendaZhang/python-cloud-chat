@@ -50,8 +50,17 @@
 
 Prepared release-contract tests are documented in
 [Backend Release Recovery Contracts](BACKEND_RELEASE_RECOVERY.md). They validate pure
-fixture declarations and decisions only, not systemd, package installation, production
-capacity or working rollback. The current live deployment behavior below is unchanged.
+declarations plus explicit temporary-fixture persistence, ownership and real subprocess
+interruptions. They do not prove systemd, package installation, production capacity or
+application rollback. Existing unittest discovery executes the process fixtures on Linux
+CI without skips and reports collected child counts. The live workflow below is unchanged.
+
+For changes to these helpers, also compile them explicitly and run their focused tests:
+
+```bash
+venv/bin/python -m compileall scripts/backend_release
+venv/bin/python -m unittest discover -s tests -p 'test_backend_release_*.py'
+```
 
 后端 GitHub Actions 在 Pull Request、推送到 `master` 与手动触发时使用 Python 3.13.14，
 安装已提交的 `requirements.txt`，并依次执行以下仓库级门禁：

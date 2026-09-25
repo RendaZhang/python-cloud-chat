@@ -3,10 +3,12 @@
 ## Prepared, Not Active
 
 Slice 18.3.1 adds pure standard-library contracts under `scripts/backend_release/`.
-They do not deploy, install packages, write a journal, start processes, call systemd,
-contact the network, import Flask, or touch application data. Existing production
-delivery and the canonical service unit remain unchanged. Valid input records and
-passing unit tests do **not** prove working recovery or production readiness.
+Slice 18.3.2a adds a separate, explicit temporary-fixture state store. The pure modules
+remain side-effect free; only the fixture store performs filesystem operations.
+Neither layer deploys, installs packages, starts application processes, calls systemd,
+contacts the network, imports Flask, or touches application data. Existing production
+delivery and the canonical service unit remain unchanged. Passing fixture tests do
+**not** prove application recovery or production readiness.
 
 The current production workflow still updates its checkout and environment and can
 restore a replaced service unit. That is not complete code/environment recovery.
@@ -21,12 +23,22 @@ validated replacement. Do not run a production deployment merely to exercise the
 | `decisions.py` | Compare requested inputs with accepted runtime, environment-reuse decisions, protected environment references and initial-adoption planning. |
 | `unit.py` | Render a string from the exact reviewed canonical policy using only validated paths and bounded candidate substitutions. |
 | `state.py` | In-memory ownership, phase, evidence and deadline decisions; no durable state or recovery executor. |
+| `records.py` | Pure, bounded versioned serialization of transaction, ownership, clock, source/serving and reserved-inode identities. |
+| `store.py` | Explicit POSIX temporary-fixture initialization, bounded locks, compare-and-swap persistence and known-alias cleanup; no host adapter or production CLI. |
 
 All path-bearing operations require explicit fixture roots. Lexical checks reject
 escapes and shell/systemd interpolation characters; known live root prefixes are
 excluded. Constructors and queries create no directories. These checks cannot prove
 that a real filesystem has safe ownership, modes, symlink targets or available space.
 That proof belongs to a later host adapter, not a relaxed fixture-root check.
+
+The fixture store additionally walks directory descriptors without following symlinks,
+pins the directory chain, and checks actual ownership/modes and inode/link identities
+at read, lock and commit boundaries. It accepts an existing private 0700 directory
+under supported POSIX temporary prefixes only; callers supply its canonical path.
+Regular record files are owned 0600 files. Unexpected symlinks, devices, FIFOs,
+slot/lock replacements or extra hardlinks are refused. This is not protection against
+a malicious process with the same account/root privileges or a general host sandbox.
 
 Records reject duplicate JSON keys, unknown/missing fields, non-standard/non-finite
 numbers, booleans/floats where integers are required, oversized inventories, duplicate
@@ -128,12 +140,66 @@ No previous environment is evicted, moved or counted as workspace. General repea
 dependency-changing rollout is therefore **not solved** under the current two-env
 contract; changing capacity or retention requires a separate reviewed decision.
 
+## Durable Fixture State
+
+Construction validates the existing directory but creates nothing. `read()` and
+`deadline()` never initialize, repair or clean files. Only explicit `initialize()`
+reserves an empty lock file and two record-slot inodes, then establishes `state.json`.
+There is no default root and no executable production command.
+
+The version-1 record binds both releases, checkout/serving/accepted identities,
+request/run/attempt/generation, phase/failure, one clock context, revision/predecessor
+digest, root/lock identities and both fixed slot identities. Nested release parsing
+uses the existing strict contracts. The entire combined record still has the original
+64 KiB limit. A checksum detects corruption but is not authentication. Status never
+chooses the highest slot revision or invents an authority when `state.json` is missing.
+
+There is one authoritative name: `state.json`, a hardlink to one reserved slot.
+Within the permanent exclusive lock, a writer re-reads and checks the exact expected
+revision/digest and owner before calculating the transition. It rewrites only the
+inactive slot, completes short writes, fsyncs that file, links a same-directory
+`pending.json` alias to the known inode, atomically replaces `state.json`, then fsyncs
+the directory. The replacement is the acceptance decision; successful return requires
+directory-sync confirmation too. An ambiguous replacement or subsequent failure raises
+`DurabilityUncertain`,
+never a claim that the old state still serves. Terminal acceptance remains protected
+from stale failure callbacks. Recovered records retain the original failed outcome.
+
+Readers hold a bounded shared lock, so a subsequent writer cannot reuse a slot beneath
+an open reader. Writers use a bounded exclusive lock, re-read after acquiring it and
+never unlink the lock or kill its holder. Waits default to 250 ms and are capped at
+2,000 ms; a stopped holder causes `LockBusy`, not takeover. This is local POSIX flock
+coordination, not distributed ownership or actual process/cgroup fencing.
+
+An initialized record already owns both slot inodes before any later write starts.
+After a writer crash, truncated/partial inactive data can be overwritten safely.
+Under the same exclusive lock, cleanup may remove only a `pending.json` alias whose
+inode and exact link count match those already-durable slot identities. Unknown files
+are preserved and refused. There is no per-write ownership sidecar or ownership-creation
+window to strand future writes. The two slots allocate at most 128 KiB of logical record
+data total; the authoritative and pending hardlink names do not allocate extra copies.
+Filesystem block/inode overhead is not a production disk-capacity measurement.
+
+Initial empty-fixture bootstrap is different: interruption before the first authoritative
+record exists leaves unproven artifacts. Read fails and re-initialization refuses rather
+than sweeping them or selecting a candidate slot. The test owner may discard that exact
+temporary fixture and create a fresh one. This limitation is acceptable only before any
+application activation/source synchronization. Later lifecycle work must finish bootstrap
+and establish its durable baseline **before** stopping a live service.
+
+The clock context is an explicit caller-supplied boot/clock identity, not a boot-ID probe.
+Reopening preserves activation time. Changed/unknown context or backwards/exhausted time
+cannot authorize acceptance/recovery or reset the clock. A later host adapter must source
+and validate real clock evidence. The proposed 270+210-second policy is unchanged and
+unmeasured; fixture lock timings are not a service recovery guarantee.
+
 ## Validation and Remaining Gates
 
 Use the repository's existing pinned Python environment:
 
 ```bash
 venv/bin/python -m unittest discover -s tests -p 'test_backend_release_*.py'
+venv/bin/python -m unittest tests.test_backend_release_store tests.test_backend_release_store_process
 venv/bin/python -m unittest discover -s tests
 ```
 
@@ -142,6 +208,17 @@ test refuses filesystem mutations, network sockets and child-process launches fr
 the modules. Unit rendering tests compare every untouched policy line. Existing
 application tests remain separate and mock external boundaries as documented in
 [TESTING.md](TESTING.md).
+
+Real owned subprocess tests run on macOS and Linux without platform skips. Pipe barriers
+place failures at inactive-slot truncate, partial/full write, file fsync, alias creation,
+atomic replacement, directory fsync and interrupted alias cleanup. Tests then reopen,
+record failure/recovery and start another generation. They also cover competing writers,
+shared readers, stale callbacks, stopped/killed lock holders and incomplete initial
+bootstrap. All child processes are collected and only test-owned temporary roots are
+removed. Injected write/fsync failures, invalid records, clock mismatch and path/alias
+substitution tests complement the process cases. CI prints executed process cases and
+collected-child counts. These are process-crash fixtures, **not power-loss tests** or
+evidence about real systemd, application availability or production filesystems.
 
 Future gates are separate: durable backend lifecycle adapter and real Linux/systemd
 fault tests; complete offline wheel/install proof; measured deadline/resource proof;
