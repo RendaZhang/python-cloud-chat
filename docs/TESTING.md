@@ -60,7 +60,16 @@ For changes to these helpers, also compile them explicitly and run their focused
 ```bash
 venv/bin/python -m compileall scripts/backend_release
 venv/bin/python -m unittest discover -s tests -p 'test_backend_release_*.py'
+venv/bin/python -m unittest tests.test_backend_preparation_probe
 ```
+
+The feature-only offline-preparation capacity checkpoint also runs its portable
+stdlib tests under Ubuntu's OS Python. Actual wheel downloads, final-path installs,
+network namespaces and preparation cgroup measurements run only on the disposable
+Linux proof job, never as part of local unittest discovery. Inspect its sanitized
+capacity receipt and cleanup result; a green quality job alone does not prove the
+offline checkpoint or immutable release preparation. See the recovery contract's
+capacity-checkpoint section for the unchanged budgets and outstanding gates.
 
 后端 GitHub Actions 在 Pull Request、推送到 `master` 与手动触发时使用 Python 3.13.14，
 安装已提交的 `requirements.txt`，并依次执行以下仓库级门禁：

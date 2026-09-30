@@ -195,6 +195,43 @@ unmeasured; fixture lock timings are not a service recovery guarantee.
 
 ## Validation and Remaining Gates
 
+### Offline Preparation Capacity Checkpoint
+
+The feature-only `offline-preparation-proof` CI job is an early feasibility gate,
+not a release builder or completion of immutable preparation. It runs on disposable
+Ubuntu 24.04 with the read-only setup-python CPython 3.13.14 binary. The OS Python
+stdlib helper validates its real path, binary digest, ABI/platform and bundled
+ensurepip seed separately from the private writable temporary fixture. It neither
+copies the interpreter nor changes the existing pure environment declarations.
+
+One owned transient preparation unit contains the helper, sampler, resolver, venv
+seed, installer and verification descendants under a hard 128 MiB cgroup limit and
+zero swap. CI setup/quality tooling and the external test supervisor are separate
+infrastructure, not evidence of target-host preparation. The receipt separately
+reports the external supervisor and its serial control-child RSS high-water;
+the worker cgroup peak alone is not a complete production admission claim.
+Tracked requirements reading and helper copying occur inside the bounded worker.
+Binary-only download uses
+all 73 unchanged exact pins. Installation uses a final absolute fixture path,
+verified local wheel hashes and a separate network namespace with no external
+interfaces; pip check and native imports run there too. No app import or service
+connection is allowed. Download/install deadlines are 300/180 seconds; the owned
+unit has a 650-second maximum and the CI job a 20-minute deadline.
+
+The small JSON receipt records stage, success/failure, cgroup memory peak/events,
+100 ms sampled allocated disk/inode/file high-water, fixed component budgets and
+owned-process/fixture cleanup. Disk samples are not quotas. A failed receipt fails
+the job; it must not be relabeled successful or retried with increased limits.
+No wheels or environments are uploaded or committed. The first checkpoint has no
+protected environments; its receipt explicitly records that limitation. Immutable
+publication, reuse, two protected environments, comprehensive artifact/fault tests
+and production capacity remain unproved even if this early checkpoint passes.
+
+The existing quality and production deployment jobs are unchanged. The proof runs
+only for the owned feature dispatch or a same-repository PR from that feature;
+master dispatch cannot run it and feature dispatch cannot deploy. Root planning
+documents and production access remain outside this checkpoint.
+
 Use the repository's existing pinned Python environment:
 
 ```bash

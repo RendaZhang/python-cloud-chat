@@ -64,6 +64,48 @@ jobs:
       - name: Run pre-commit hooks
         run: pre-commit run --all-files
 
+  offline-preparation-proof:
+    name: Disposable offline preparation capacity checkpoint
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/codex/phase-18-backend-release-foundation') ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'codex/phase-18-backend-release-foundation')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up read-only base Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: 3.13.14
+
+      - name: Check OS Python helper compatibility
+        run: /usr/bin/python3 -B -m unittest tests.test_backend_preparation_probe
+
+      - name: Measure isolated preparation without changing budgets
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 -B \
+            scripts/backend_release/preparation_probe.py controller \
+            --base "$pythonLocation/bin/python3.13" \
+            --repository "$GITHUB_WORKSPACE" --sha "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/backend-preparation-receipts"
+
+      - name: Retain sanitized capacity receipt
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-preparation-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/backend-preparation-receipts/*.json
+          if-no-files-found: error
+          retention-days: 7
+
   deploy:
     name: Deploy exact commit to production
     needs: quality
