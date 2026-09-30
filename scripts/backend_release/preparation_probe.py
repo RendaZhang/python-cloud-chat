@@ -29,6 +29,31 @@ DISK_LIMITS = {
 }
 TOTAL_LIMIT = 1280 * MIB
 ROOT_PREFIX = "backend-offline-proof-"
+STAGES = (
+    "tracked_inputs",
+    "interpreter",
+    "binary_download",
+    "wheel_metadata",
+    "network_isolation",
+    "final_path_seed",
+    "offline_install",
+    "offline_verification",
+)
+EVENT_KEYS = ("low", "high", "max", "oom", "oom_kill", "oom_group_kill")
+STAT_KEYS = (
+    "anon",
+    "file",
+    "kernel",
+    "kernel_stack",
+    "pagetables",
+    "sock",
+    "shmem",
+    "file_dirty",
+    "file_writeback",
+    "slab",
+    "pgscan",
+    "pgsteal",
+)
 
 
 class ProofError(ValueError):
@@ -99,26 +124,80 @@ def clean_environment(root):
     }
 
 
-def hashed_requirements(wheel_directory, expected):
+def normalized_name(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def member_label(name):
+    return re.sub(r"[^A-Za-z0-9_./+-]", "?", name)[:160]
+
+
+def hashed_requirements(wheel_directory, expected, diagnostics=None):
     """Checkpoint metadata/hash binding; pip still owns resolution and installation."""
     manifest, discovered, lines = [], {}, []
-    for wheel in sorted(wheel_directory.iterdir()):
+    diagnostics = diagnostics if diagnostics is not None else {}
+    diagnostics.update(wheels_checked=0, nested_metadata_total=0, nested_archives=[])
+    wheels = sorted(wheel_directory.iterdir())
+    require(len(wheels) <= 73, "wheel_count_bound")
+    for wheel in wheels:
         info = wheel.lstat()
         require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "wheel_not_regular")
         require(0 < info.st_size <= 256 * MIB, "wheel_size")
-        require(re.fullmatch(r"[A-Za-z0-9_.+-]+\.whl", wheel.name), "wheel_filename")
+        require(len(wheel.name) <= 200, "wheel_filename")
+        filename = re.fullmatch(
+            r"([A-Za-z0-9_.]+)-([A-Za-z0-9_.+!]+)-(?:[0-9][A-Za-z0-9_.]*-)?"
+            r"[A-Za-z0-9_.]+-[A-Za-z0-9_.]+-[A-Za-z0-9_.]+\.whl",
+            wheel.name,
+        )
+        require(filename is not None, "wheel_filename")
         with zipfile.ZipFile(wheel) as archive:
             metadata = [
                 entry
                 for entry in archive.infolist()
                 if entry.filename.endswith(".dist-info/METADATA")
             ]
-            require(
-                len(metadata) == 1 and metadata[0].file_size <= MIB, "wheel_metadata"
+            root_metadata = [
+                entry for entry in metadata if entry.filename.count("/") == 1
+            ]
+            nested = [entry for entry in metadata if entry.filename.count("/") != 1]
+            detail = {
+                "filename": wheel.name,
+                "archive_member_count": len(archive.infolist()),
+                "metadata_member_count": len(metadata),
+                "root_metadata_count": len(root_metadata),
+                "root_members": [
+                    member_label(entry.filename) for entry in root_metadata[:2]
+                ],
+                "nested_metadata_count": len(nested),
+                "nested_member_sample": [
+                    member_label(entry.filename) for entry in nested[:3]
+                ],
+            }
+            diagnostics["last_archive"] = detail
+            diagnostics["nested_metadata_total"] += len(nested)
+            if nested and len(diagnostics["nested_archives"]) < 8:
+                diagnostics["nested_archives"].append(detail)
+            require(len(root_metadata) == 1, "wheel_metadata")
+            entry = root_metadata[0]
+            identity = re.fullmatch(
+                r"([A-Za-z0-9_.]+)-([A-Za-z0-9_.+!]+)\.dist-info/METADATA",
+                entry.filename,
             )
-            parsed = BytesParser().parsebytes(archive.read(metadata[0]))
-        name = re.sub(r"[-_.]+", "-", parsed["Name"]).lower()
+            require(identity is not None, "wheel_metadata_identity")
+            require(0 < entry.file_size <= MIB, "wheel_metadata_size")
+            parsed = BytesParser().parsebytes(archive.read(entry))
+        require(
+            len(parsed.get_all("Name", [])) == 1
+            and len(parsed.get_all("Version", [])) == 1,
+            "wheel_metadata_headers",
+        )
+        name = normalized_name(parsed["Name"])
         version = parsed["Version"]
+        require(
+            normalized_name(filename[1]) == normalized_name(identity[1]) == name
+            and filename[2] == identity[2] == version,
+            "wheel_metadata_identity",
+        )
         require(name not in discovered, "duplicate_wheel_project")
         require(expected.get(name) == version, "wheel_pin_mismatch")
         discovered[name] = version
@@ -133,6 +212,7 @@ def hashed_requirements(wheel_directory, expected):
             }
         )
         lines.append(f"{name}=={version} --hash=sha256:{checksum}")
+        diagnostics["wheels_checked"] += 1
     require(discovered == expected, "wheel_closure_mismatch")
     return manifest, "\n".join(lines) + "\n"
 
@@ -260,6 +340,55 @@ def verify_base(base, root):
     return dict(data, binary_sha256=before, access="read-only-input")
 
 
+def memory_snapshot(cgroup):
+    result = {}
+    for metric in (
+        "memory.current",
+        "memory.peak",
+        "memory.swap.peak",
+        "memory.events",
+        "memory.stat",
+    ):
+        with (cgroup / metric).open() as stream:
+            raw = stream.read(16385)
+        require(len(raw) <= 16384, "cgroup_metric_bound")
+        if metric in ("memory.events", "memory.stat"):
+            keys = EVENT_KEYS if metric == "memory.events" else STAT_KEYS
+            values = {}
+            for line in raw.splitlines():
+                key, value = line.split()
+                if key in keys:
+                    require(
+                        key not in values and value.isdecimal(), "cgroup_metric_invalid"
+                    )
+                    values[key] = int(value)
+            required = (
+                ("max", "oom", "oom_kill")
+                if metric == "memory.events"
+                else ("anon", "file", "kernel")
+            )
+            require(set(required) <= values.keys(), "cgroup_metric_missing")
+            result[metric] = values
+        else:
+            require(raw.strip().isdecimal(), "cgroup_metric_invalid")
+            result[metric] = int(raw)
+    return result
+
+
+def memory_failures(memory):
+    failures = set()
+    if memory["memory.peak"] > MEMORY_LIMIT or memory["memory.current"] > MEMORY_LIMIT:
+        failures.add("measured_memory_budget_exceeded")
+    if memory["memory.swap.peak"] != 0:
+        failures.add("measured_swap_budget_exceeded")
+    if any(
+        memory["memory.events"].get(key, 0)
+        for key in ("oom", "oom_kill", "oom_group_kill")
+    ):
+        failures.add("memory_oom_event")
+    return failures
+
+
 class Meter:
     def __init__(self, root, cgroup):
         self.root, self.cgroup = root, cgroup
@@ -270,37 +399,82 @@ class Meter:
         self.max_sample_gap_seconds = 0
         self.previous_sample = time.monotonic()
         self.failure = None
+        self.resource_failures = set()
+        self.stages = {}
+        self.stage = None
+        self.stage_started = None
+        self.started = time.monotonic()
         self.thread = threading.Thread(target=self._sample, daemon=True)
 
     def once(self):
-        usage = {name: allocated_tree(self.root / name) for name in DISK_LIMITS}
-        usage["total"] = allocated_tree(self.root)
         with self.lock:
+            usage = {name: allocated_tree(self.root / name) for name in DISK_LIMITS}
+            usage["total"] = allocated_tree(self.root)
+            memory = memory_snapshot(self.cgroup)
             now = time.monotonic()
             self.max_sample_gap_seconds = max(
                 self.max_sample_gap_seconds, now - self.previous_sample
             )
             self.previous_sample = now
             self.samples += 1
-            for name, values in usage.items():
-                prior = self.high_water.setdefault(name, dict.fromkeys(values, 0))
-                for key, value in values.items():
-                    prior[key] = max(prior[key], value)
+            self.update_high_water(self.high_water, usage)
+            self.resource_failures.update(memory_failures(memory))
+            if self.stage is not None:
+                stage = self.stages[self.stage]
+                stage.setdefault("memory_start", memory)
+                stage["memory_latest"] = memory
+                stage["duration_seconds"] = now - self.stage_started
+                stage["samples"] += 1
+                if memory["memory.current"] >= stage["sampled_current_high_water"]:
+                    stage["sampled_current_high_water"] = memory["memory.current"]
+                    stage["stat_at_sampled_current_high_water"] = memory["memory.stat"]
+                self.update_high_water(stage["sampled_disk_high_water"], usage)
             resources = {
                 "sampled_disk_high_water": self.high_water,
                 "samples": self.samples,
                 "max_sample_gap_seconds": self.max_sample_gap_seconds,
+                "elapsed_seconds": now - self.started,
+                "active_stage": self.stage,
+                "stages": self.stages,
+                "resource_failures": sorted(self.resource_failures),
+                **memory,
             }
-            for metric in ("memory.peak", "memory.swap.peak", "memory.events"):
-                file = self.cgroup / metric
-                if file.exists():
-                    resources[metric] = file.read_text().strip()
             # Keep bounded crash evidence even if the cgroup kills the worker.
             pending = self.root / "receipts/resource-pending.json"
-            pending.write_text(json.dumps(resources, sort_keys=True))
+            raw = json.dumps(resources, sort_keys=True)
+            require(len(raw.encode()) <= 65536, "resource_receipt_bound")
+            pending.write_text(raw)
             os.replace(pending, self.root / "receipts/resources.json")
         for name, limit in {**DISK_LIMITS, "total": TOTAL_LIMIT}.items():
             require(usage[name]["allocated_bytes"] <= limit, "disk_budget_" + name)
+
+    @staticmethod
+    def update_high_water(high_water, usage):
+        for name, values in usage.items():
+            prior = high_water.setdefault(name, dict.fromkeys(values, 0))
+            for key, value in values.items():
+                prior[key] = max(prior[key], value)
+
+    def begin(self, name):
+        require(name in STAGES and name not in self.stages, "stage_not_unique_or_known")
+        self.once()
+        with self.lock:
+            if self.stage is not None:
+                self.stages[self.stage]["ended"] = True
+            self.stage = name
+            self.stage_started = time.monotonic()
+            self.stages[name] = {
+                "samples": 0,
+                "sampled_current_high_water": 0,
+                "sampled_disk_high_water": {},
+                "ended": False,
+            }
+        self.once()
+
+    def check_limits(self):
+        self.once()
+        require(self.failure is None, "sampling_failed")
+        require(not self.resource_failures, ",".join(sorted(self.resource_failures)))
 
     def _sample(self):
         while not self.stop.is_set():
@@ -318,6 +492,10 @@ class Meter:
         require(not self.thread.is_alive(), "meter_not_reaped")
         self.once()
         require(self.failure is None, "sampling_failed")
+        with self.lock:
+            if self.stage is not None:
+                self.stages[self.stage]["ended"] = True
+        self.check_limits()
         return self.high_water
 
 
@@ -329,6 +507,36 @@ def write_receipt(root, receipt):
         stream.write(raw)
         stream.flush()
         os.fsync(stream.fileno())
+
+
+def enter_stage(root, receipt, meter, name, *, diagnostic=False):
+    # Only bounded metadata diagnosis may follow an already measured overrun.
+    if not diagnostic:
+        meter.check_limits()
+    meter.begin(name)
+    receipt["stage"] = name
+    write_receipt(root, receipt)
+
+
+def diagnose_wheels(root, expected, receipt, meter):
+    enter_stage(root, receipt, meter, "wheel_metadata", diagnostic=True)
+    receipt["metadata_diagnostics"] = {}
+    try:
+        manifest, hashed = hashed_requirements(
+            root / "wheels", expected, receipt["metadata_diagnostics"]
+        )
+        receipt["wheel_files"] = manifest
+        receipt["metadata_status"] = "passed"
+    except Exception as error:
+        receipt["metadata_status"] = "failed"
+        receipt["metadata_failure"] = (
+            str(error) if isinstance(error, ProofError) else type(error).__name__
+        )
+        raise
+    finally:
+        write_receipt(root, receipt)
+        meter.check_limits()
+    return hashed
 
 
 def worker(root, base, repository, target_sha):
@@ -354,7 +562,7 @@ def worker(root, base, repository, target_sha):
     meter = Meter(root, cgroup)
     meter.thread.start()
     try:
-        receipt["stage"] = "tracked_inputs"
+        enter_stage(root, receipt, meter, "tracked_inputs")
         raw = command(
             [
                 "/usr/bin/git",
@@ -372,14 +580,13 @@ def worker(root, base, repository, target_sha):
         pins(raw)
         (root / "workspace/requirements.txt").write_bytes(raw)
         shutil.copyfile(__file__, root / "workspace/probe.py")
-        receipt["stage"] = "interpreter"
+        enter_stage(root, receipt, meter, "interpreter")
         receipt["base"] = verify_base(base, root)
         requirements = root / "workspace/requirements.txt"
         expected = pins(requirements.read_bytes())
         receipt["requirements_sha256"] = sha256(requirements)
         receipt["pin_count"] = len(expected)
-        receipt["stage"] = "binary_download"
-        write_receipt(root, receipt)
+        enter_stage(root, receipt, meter, "binary_download")
         command(
             [
                 str(base),
@@ -404,10 +611,10 @@ def worker(root, base, repository, target_sha):
             root=root,
             timeout=300,
         )
-        receipt["wheel_files"], hashed = hashed_requirements(root / "wheels", expected)
+        hashed = diagnose_wheels(root, expected, receipt, meter)
         locked = root / "workspace/install.txt"
         locked.write_text(hashed)
-        receipt["stage"] = "network_isolation"
+        enter_stage(root, receipt, meter, "network_isolation")
         receipt["network"] = json.loads(
             command(
                 [str(base), "-I", "-B", "-c", NETWORK_PROBE],
@@ -417,8 +624,7 @@ def worker(root, base, repository, target_sha):
                 capture=True,
             )
         )
-        receipt["stage"] = "final_path_seed"
-        write_receipt(root, receipt)
+        enter_stage(root, receipt, meter, "final_path_seed")
         final = root / "envs/candidate"
         require(not final.exists(), "final_path_already_exists")
         command(
@@ -428,8 +634,7 @@ def worker(root, base, repository, target_sha):
             offline=True,
         )
         python = str(final / "bin/python")
-        receipt["stage"] = "offline_install"
-        write_receipt(root, receipt)
+        enter_stage(root, receipt, meter, "offline_install")
         command(
             [
                 python,
@@ -455,7 +660,7 @@ def worker(root, base, repository, target_sha):
             timeout=180,
             offline=True,
         )
-        receipt["stage"] = "offline_verification"
+        enter_stage(root, receipt, meter, "offline_verification")
         command(
             [python, "-I", "-B", "-m", "pip", "--isolated", "check"],
             root=root,
@@ -483,13 +688,7 @@ def worker(root, base, repository, target_sha):
         )
         receipt["installed"] = installed
         require(sha256(base) == receipt["base"]["binary_sha256"], "base_binary_changed")
-        events = dict(
-            line.split() for line in (cgroup / "memory.events").read_text().splitlines()
-        )
-        require(
-            int(events.get("oom", 0)) == 0 and int(events.get("oom_kill", 0)) == 0,
-            "memory_budget_exceeded",
-        )
+        meter.check_limits()
         receipt["status"] = "capacity_checkpoint_passed_not_release_ready"
     except Exception as error:
         receipt["status"] = "failed"
@@ -500,15 +699,24 @@ def worker(root, base, repository, target_sha):
     finally:
         try:
             receipt["sampled_high_water"] = meter.finish()
+        except Exception as error:
+            receipt["status"] = "failed"
+            receipt["resource_failure"] = (
+                str(error) if isinstance(error, ProofError) else type(error).__name__
+            )
+            raise
         finally:
-            for metric in ("memory.peak", "memory.swap.peak", "memory.events"):
-                file = cgroup / metric
-                if file.exists():
-                    receipt[metric] = file.read_text().strip()
+            latest = memory_snapshot(cgroup)
+            receipt.update(latest)
+            final_failures = memory_failures(latest)
+            if final_failures:
+                receipt["status"] = "failed"
+                receipt["resource_failure"] = ",".join(sorted(final_failures))
             receipt["disk_measurement"] = (
                 "nominal 100ms samples plus final check; actual sample gaps recorded; not disk quotas"
             )
             write_receipt(root, receipt)
+            require(not final_failures, ",".join(sorted(final_failures)))
 
 
 def read_optional_receipt(file):

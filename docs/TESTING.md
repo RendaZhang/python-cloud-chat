@@ -70,6 +70,12 @@ Linux proof job, never as part of local unittest discovery. Inspect its sanitize
 capacity receipt and cleanup result; a green quality job alone does not prove the
 offline checkpoint or immutable release preparation. See the recovery contract's
 capacity-checkpoint section for the unchanged budgets and outstanding gates.
+Portable regressions distinguish root wheel metadata from vendored copies, retain
+identity/duplicate/size refusals, and prove an over-budget peak with zero OOM events
+still blocks seed/install after saving metadata diagnostics. Inspect per-stage keyed
+memory/stat/event, elapsed-time and sampled-disk evidence separately from the external
+supervisor cost. Neither cumulative peaks nor sampled disk values are hard admission
+guarantees. This diagnostic revision leaves the workflow and production jobs unchanged.
 
 后端 GitHub Actions 在 Pull Request、推送到 `master` 与手动触发时使用 Python 3.13.14，
 安装已提交的 `requirements.txt`，并依次执行以下仓库级门禁：

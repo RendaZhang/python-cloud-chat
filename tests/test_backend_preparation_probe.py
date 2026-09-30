@@ -24,14 +24,30 @@ class PreparationCheckpointTests(unittest.TestCase):
             (self.root / name).mkdir(mode=0o700)
         for name in ("home", "tmp"):
             (self.root / "workspace" / name).mkdir()
+        self.set_memory()
+
+    def set_memory(self, *, current=1024, peak=2048, swap=0, events=None):
+        values = {
+            "memory.current": str(current),
+            "memory.peak": str(peak),
+            "memory.swap.peak": str(swap),
+            "memory.events": events or "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\n",
+            "memory.stat": "file 512\nunknown_future_key 77\nkernel 256\nanon 128\nslab 64\npgscan 3\npgsteal 2\n",
+        }
+        for name, value in values.items():
+            (self.root / name).write_text(value)
 
     def wheel(
-        self, filename="example-1.0-py3-none-any.whl", name="example", version="1.0"
+        self,
+        filename="example-1.0-py3-none-any.whl",
+        name="example",
+        version="1.0",
+        member="example-1.0.dist-info/METADATA",
     ):
         destination = self.root / "wheels" / filename
         with zipfile.ZipFile(destination, "w") as archive:
             archive.writestr(
-                "example-1.0.dist-info/METADATA",
+                member,
                 f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n",
             )
         return destination
@@ -111,9 +127,17 @@ class PreparationCheckpointTests(unittest.TestCase):
             proof.hashed_requirements(self.root / "wheels", {"different": "1.0"})
 
     def test_duplicate_normalized_wheel_project_refused(self):
-        self.wheel(name="my_example")
-        self.wheel("another-1.0-py3-none-any.whl", name="my-example")
-        with self.assertRaises(proof.ProofError):
+        self.wheel(
+            "my_example-1.0-py3-none-any.whl",
+            name="my_example",
+            member="my_example-1.0.dist-info/METADATA",
+        )
+        self.wheel(
+            "my.example-1.0-py2-none-any.whl",
+            name="my-example",
+            member="my.example-1.0.dist-info/METADATA",
+        )
+        with self.assertRaisesRegex(proof.ProofError, "duplicate_wheel_project"):
             proof.hashed_requirements(self.root / "wheels", {"my-example": "1.0"})
 
     def test_wrong_wheel_version_refused(self):
@@ -140,6 +164,83 @@ class PreparationCheckpointTests(unittest.TestCase):
             )
         with self.assertRaises(proof.ProofError):
             proof.hashed_requirements(self.root / "wheels", {"example": "1.0"})
+
+    def test_root_metadata_with_vendored_metadata_binds_only_root(self):
+        wheel = self.wheel()
+        with zipfile.ZipFile(wheel, "a") as archive:
+            archive.writestr(
+                "example/_vendor/vendor-2.0.dist-info/METADATA",
+                "Name: vendor\nVersion: 2.0\n",
+            )
+        diagnostics = {}
+        manifest, _ = proof.hashed_requirements(
+            self.root / "wheels", {"example": "1.0"}, diagnostics
+        )
+        self.assertEqual(manifest[0]["name"], "example")
+        self.assertEqual(diagnostics["wheels_checked"], 1)
+        detail = diagnostics["nested_archives"][0]
+        self.assertEqual(detail["metadata_member_count"], 2)
+        self.assertEqual(detail["root_metadata_count"], 1)
+        self.assertEqual(detail["nested_metadata_count"], 1)
+        self.assertEqual(detail["filename"], wheel.name)
+        self.assertEqual(detail["root_members"], ["example-1.0.dist-info/METADATA"])
+
+    def test_nested_only_metadata_is_not_a_root_distribution(self):
+        self.wheel(member="example/_vendor/example-1.0.dist-info/METADATA")
+        diagnostics = {}
+        with self.assertRaisesRegex(proof.ProofError, "wheel_metadata"):
+            proof.hashed_requirements(
+                self.root / "wheels", {"example": "1.0"}, diagnostics
+            )
+        self.assertEqual(diagnostics["last_archive"]["root_metadata_count"], 0)
+
+    def test_duplicate_root_zip_entry_is_refused(self):
+        wheel = self.wheel()
+        with zipfile.ZipFile(wheel, "a") as archive, self.assertWarns(UserWarning):
+            archive.writestr(
+                "example-1.0.dist-info/METADATA", "Name: example\nVersion: 1.0\n"
+            )
+        with self.assertRaisesRegex(proof.ProofError, "wheel_metadata"):
+            proof.hashed_requirements(self.root / "wheels", {"example": "1.0"})
+
+    def test_filename_directory_and_header_identity_must_match(self):
+        for member, name, version in (
+            ("other-1.0.dist-info/METADATA", "example", "1.0"),
+            ("example-2.0.dist-info/METADATA", "example", "1.0"),
+            ("example-1.0.dist-info/METADATA", "other", "1.0"),
+            ("example-1.0.dist-info/METADATA", "example", "2.0"),
+            ("../example-1.0.dist-info/METADATA", "example", "1.0"),
+        ):
+            with self.subTest(member=member, name=name, version=version):
+                self.wheel(member=member, name=name, version=version)
+                with self.assertRaises(proof.ProofError):
+                    proof.hashed_requirements(self.root / "wheels", {name: version})
+
+    def test_metadata_missing_duplicate_headers_and_size_limit_refused(self):
+        for raw, code in (
+            ("Version: 1.0\n", "wheel_metadata_headers"),
+            ("Name: example\nName: example\nVersion: 1.0\n", "wheel_metadata_headers"),
+            ("Name: example\nVersion: 1.0\nVersion: 1.0\n", "wheel_metadata_headers"),
+            ("x" * (proof.MIB + 1), "wheel_metadata_size"),
+        ):
+            with self.subTest(code=code):
+                with zipfile.ZipFile(
+                    self.root / "wheels/example-1.0-py3-none-any.whl", "w"
+                ) as archive:
+                    archive.writestr("example-1.0.dist-info/METADATA", raw)
+                with self.assertRaisesRegex(proof.ProofError, code):
+                    proof.hashed_requirements(self.root / "wheels", {"example": "1.0"})
+
+    def test_normalized_historical_name_and_build_tag_are_supported(self):
+        self.wheel(
+            "My.Example-1.0-2-py3-none-any.whl",
+            name="my-example",
+            member="my_example-1.0.dist-info/METADATA",
+        )
+        manifest, _ = proof.hashed_requirements(
+            self.root / "wheels", {"my-example": "1.0"}
+        )
+        self.assertEqual(manifest[0]["name"], "my-example")
 
     def test_noncanonical_base_refused_without_launch(self):
         base = self.root / "alias"
@@ -244,6 +345,115 @@ class PreparationCheckpointTests(unittest.TestCase):
         saved = proof.read_optional_receipt(self.root / "receipts/resources.json")
         self.assertEqual(saved["samples"], 1)
         self.assertEqual(saved["sampled_disk_high_water"], meter.high_water)
+
+    def test_stage_measurements_are_keyed_bounded_and_never_reset_peak(self):
+        meter = proof.Meter(self.root, self.root)
+        meter.begin("binary_download")
+        self.set_memory(current=4096, peak=8192, events="max 9\noom_kill 0\noom 0\n")
+        meter.once()
+        meter.begin("wheel_metadata")
+        saved = proof.read_optional_receipt(self.root / "receipts/resources.json")
+        first = saved["stages"]["binary_download"]
+        second = saved["stages"]["wheel_metadata"]
+        self.assertTrue(first["ended"])
+        self.assertGreater(first["duration_seconds"], 0)
+        self.assertGreaterEqual(first["samples"], 2)
+        self.assertEqual(first["sampled_current_high_water"], 4096)
+        self.assertEqual(first["memory_start"]["memory.peak"], 2048)
+        self.assertEqual(first["memory_latest"]["memory.peak"], 8192)
+        self.assertEqual(second["memory_start"]["memory.peak"], 8192)
+        self.assertEqual(first["memory_latest"]["memory.events"]["max"], 9)
+        self.assertEqual(first["memory_latest"]["memory.stat"]["file"], 512)
+        self.assertNotIn("unknown_future_key", first["memory_latest"]["memory.stat"])
+        self.assertEqual((self.root / "memory.peak").read_text(), "8192")
+        self.assertIn("total", first["sampled_disk_high_water"])
+        for name in ("wheel_metadata", "uncontrolled"):
+            with self.assertRaisesRegex(proof.ProofError, "stage_not_unique_or_known"):
+                meter.begin(name)
+
+    def test_over_peak_with_zero_oom_retains_metadata_and_blocks_seed(self):
+        self.wheel()
+        self.set_memory(peak=proof.MEMORY_LIMIT + 1)
+        meter = proof.Meter(self.root, self.root)
+        meter.begin("binary_download")
+        receipt = {}
+        with self.assertRaisesRegex(
+            proof.ProofError, "measured_memory_budget_exceeded"
+        ):
+            proof.diagnose_wheels(self.root, {"example": "1.0"}, receipt, meter)
+        saved = proof.read_optional_receipt(self.root / "receipts/worker.json")
+        self.assertEqual(saved["metadata_status"], "passed")
+        self.assertEqual(saved["metadata_diagnostics"]["wheels_checked"], 1)
+        self.assertEqual(saved["wheel_files"][0]["name"], "example")
+        for name in ("final_path_seed", "offline_install"):
+            with self.assertRaisesRegex(
+                proof.ProofError, "measured_memory_budget_exceeded"
+            ):
+                proof.enter_stage(self.root, receipt, meter, name)
+        self.assertNotIn("final_path_seed", meter.stages)
+        self.assertFalse((self.root / "envs/candidate").exists())
+
+    def test_metadata_and_resource_failures_are_both_preserved(self):
+        self.wheel(member="nested/example-1.0.dist-info/METADATA")
+        self.set_memory(peak=proof.MEMORY_LIMIT + 1)
+        meter = proof.Meter(self.root, self.root)
+        receipt = {}
+        with self.assertRaisesRegex(
+            proof.ProofError, "measured_memory_budget_exceeded"
+        ):
+            proof.diagnose_wheels(self.root, {"example": "1.0"}, receipt, meter)
+        saved = proof.read_optional_receipt(self.root / "receipts/worker.json")
+        self.assertEqual(saved["metadata_status"], "failed")
+        self.assertEqual(saved["metadata_failure"], "wheel_metadata")
+        self.assertEqual(
+            saved["metadata_diagnostics"]["last_archive"]["root_metadata_count"], 0
+        )
+
+    def test_memory_exact_boundary_swap_and_oom_gates(self):
+        for peak, swap, events, passes in (
+            (proof.MEMORY_LIMIT, 0, None, True),
+            (proof.MEMORY_LIMIT + 1, 0, None, False),
+            (2048, 1, None, False),
+            (2048, 0, "max 1\noom 1\noom_kill 0\n", False),
+        ):
+            self.set_memory(peak=peak, swap=swap, events=events)
+            meter = proof.Meter(self.root, self.root)
+            if passes:
+                meter.check_limits()
+            else:
+                with self.assertRaises(proof.ProofError):
+                    meter.check_limits()
+
+    def test_missing_invalid_or_oversized_cgroup_metric_refuses(self):
+        for raw in ("", "file 1\nanon 1\n", "anon x\n", "x" * 16385):
+            (self.root / "memory.stat").write_text(raw)
+            with self.assertRaises(proof.ProofError):
+                proof.memory_snapshot(self.root)
+
+    def test_full_manifest_and_all_stage_evidence_fit_receipt_bound(self):
+        expected = {}
+        for index in range(73):
+            name = "public_package_with_a_long_normalized_name_" + str(index)
+            expected[proof.normalized_name(name)] = "1.0"
+            self.wheel(
+                name + "-1.0-cp313-cp313-manylinux_2_17_x86_64.whl",
+                name=name,
+                member=name + "-1.0.dist-info/METADATA",
+            )
+        diagnostics = {}
+        manifest, _ = proof.hashed_requirements(
+            self.root / "wheels", expected, diagnostics
+        )
+        meter = proof.Meter(self.root, self.root)
+        for name in proof.STAGES:
+            meter.begin(name)
+        receipt = {
+            "worker": {"wheel_files": manifest, "metadata_diagnostics": diagnostics},
+            "last_resources": proof.read_optional_receipt(
+                self.root / "receipts/resources.json"
+            ),
+        }
+        self.assertLess(len(json.dumps(receipt, indent=2).encode()), 60000)
 
 
 if __name__ == "__main__":

@@ -205,9 +205,11 @@ ensurepip seed separately from the private writable temporary fixture. It neithe
 copies the interpreter nor changes the existing pure environment declarations.
 
 One owned transient preparation unit contains the helper, sampler, resolver, venv
-seed, installer and verification descendants under a hard 128 MiB cgroup limit and
-zero swap. CI setup/quality tooling and the external test supervisor are separate
-infrastructure, not evidence of target-host preparation. The receipt separately
+seed, installer and verification descendants with `memory.max=128 MiB` and
+zero swap. The kernel can temporarily exceed `memory.max`; configured containment
+and zero OOM events do not prove a measured 128 MiB envelope. CI setup/quality tooling
+and the external test supervisor are separate infrastructure, not evidence of
+target-host preparation. The receipt separately
 reports the external supervisor and its serial control-child RSS high-water;
 the worker cgroup peak alone is not a complete production admission claim.
 Tracked requirements reading and helper copying occur inside the bounded worker.
@@ -220,7 +222,35 @@ unit has a 650-second maximum and the CI job a 20-minute deadline.
 
 The small JSON receipt records stage, success/failure, cgroup memory peak/events,
 100 ms sampled allocated disk/inode/file high-water, fixed component budgets and
-owned-process/fixture cleanup. Disk samples are not quotas. A failed receipt fails
+owned-process/fixture cleanup. Each of the eight fixed stage names can occur once.
+Stage evidence includes elapsed duration, sample count, start/latest `memory.current`,
+cumulative `memory.peak`/events, keyed `memory.stat`, sampled current high-water
+with its sampled stat breakdown, and disk/file/inode high-water. Stage `ended` means
+measurement ended, not that the operation passed. Peaks and events remain cumulative
+since cgroup creation, not exclusive per-stage peaks or simultaneous atomic snapshots.
+The sampler never resets peaks, subtracts cache charges or replaces live evidence with
+a smaller post-exit systemd value. Missing required metrics fail closed.
+
+The bounded diagnostic pass selects one root distribution `.dist-info/METADATA`,
+not nested vendored metadata. It retains the 1 MiB metadata bound and rejects missing,
+ambiguous or duplicated root entries, duplicate identity headers, project duplicates,
+and filename/directory/header/pin identity mismatches. The receipt reports the actual
+public wheel filename and member counts, with at most two root names and three nested
+name samples per diagnostic (160 characters each), and at most eight nested-archive
+examples plus the last archive. Metadata contents are not retained. This is still a
+checkpoint validator, not a complete immutable archive validator.
+
+After binary download, metadata diagnosis is retained before the measured resource
+gate, so an archive defect and memory pressure can be distinguished. Any observed
+current/peak above 128 MiB, swap usage or OOM event fails explicitly before seed/install;
+the remaining stages cannot proceed. Limits are also checked at later stage boundaries
+and finalization. Diagnosis is not permission to raise a budget or change a pin.
+The first checkpoint failed before install; neither its partial download nor this
+diagnostic correction establishes offline installation or capacity acceptance.
+See the [wheel specification](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)
+and [cgroup v2 memory semantics](https://docs.kernel.org/admin-guide/cgroup-v2.html).
+
+Disk samples are not quotas. A failed receipt fails
 the job; it must not be relabeled successful or retried with increased limits.
 No wheels or environments are uploaded or committed. The first checkpoint has no
 protected environments; its receipt explicitly records that limitation. Immutable
