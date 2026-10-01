@@ -81,7 +81,15 @@ unsafe archive members, API-only token forwarding, namespace failure, control
 allowance, killed-writer collection and uncertain cleanup refusal. Neither cumulative
 peaks nor sampled disk values are host admission guarantees. The two proof-only jobs
 are manually dispatched on the owned feature only; quality/deploy jobs are unchanged.
-This local implementation has not yet run its split Linux experiment.
+Split run `36801586242` at `e3420d8` passed quality but failed after the producer
+worker completed: the observer tried to parse an unloaded unit's `[not set]`
+post-exit `MemoryPeak` as an integer. The consumer was skipped, not accepted.
+Local regressions now distinguish missing/sentinel optional observations from a
+real numeric zero, reject malformed/negative values, and retain higher live peaks
+when post-exit values are lower. Missing/invalid required live evidence, live
+over-budget/OOM/swap, excess control usage, nonzero exit and incomplete cleanup
+still refuse. Numeric post-exit excess also refuses. These tests use fixtures and
+mock systemd; they do not rerun or retrospectively pass the failed Linux checkpoint.
 
 后端 GitHub Actions 在 Pull Request、推送到 `master` 与手动触发时使用 Python 3.13.14，
 安装已提交的 `requirements.txt`，并依次执行以下仓库级门禁：

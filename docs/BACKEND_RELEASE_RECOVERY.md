@@ -264,7 +264,13 @@ before returning. It does not use `RemainAfterExit`; the waiting launcher can fi
 on normal exit. The CI observer then checks/stops the owned unit and proves no owned
 processes remain. Timeout kills/reaps the launcher and stops the unit; uncertain
 cleanup preserves the fixture. Separate post-exit observations never replace live
-peaks. Portable tests cover this ordering but are not a Linux systemd run.
+peaks. An absent post-exit `MemoryPeak` or the exact `[not set]` sentinel is recorded
+as unavailable, not as zero. A valid unsigned numeric observation is additional
+evidence and must fit the service partition; malformed, negative or out-of-range
+values refuse with a bounded diagnostic. Required live current/peak/events/swap
+evidence, control allowance, worker exit/status and cleanup gates still apply when
+the optional observation is unavailable. Portable tests cover these cases and
+lifecycle ordering but are not a Linux systemd run.
 
 Each name in the probe's `STAGES` allowlist can occur once per role. Producer stages
 include packaging; consumer stages include ingress and artifact verification. Missing
@@ -287,8 +293,12 @@ gate, so an archive defect and memory pressure can be distinguished. Any observe
 current/peak above the role's service partition, swap usage or OOM fails before seed/install;
 the remaining stages cannot proceed. Limits are also checked at later stage boundaries
 and finalization. Diagnosis is not permission to raise a budget or change a pin.
-Both previous checkpoints failed before install; neither their partial download nor
-this unexecuted split establishes offline installation or capacity acceptance.
+The earlier checkpoints failed before install. Split run `36801586242` at `e3420d8`
+completed the producer worker but failed in the external observer when it attempted
+to parse the unloaded unit's `[not set]` post-exit peak as an integer. The consumer
+was skipped. The local correction and portable regressions do not relabel that run
+successful or establish offline installation or capacity acceptance; a new Linux
+experiment requires separate review and authorization.
 See the [wheel specification](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)
 and [cgroup v2 memory semantics](https://docs.kernel.org/admin-guide/cgroup-v2.html).
 

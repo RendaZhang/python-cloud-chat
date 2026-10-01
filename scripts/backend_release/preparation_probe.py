@@ -402,6 +402,18 @@ def memory_snapshot(cgroup):
 
 
 def memory_failures(memory, limit=MEMORY_LIMIT):
+    if not isinstance(memory, dict) or any(
+        type(memory.get(key)) is not int or memory[key] < 0
+        for key in ("memory.current", "memory.peak", "memory.swap.peak")
+    ):
+        return {"invalid_live_memory_evidence"}
+    events = memory.get("memory.events")
+    if (
+        not isinstance(events, dict)
+        or not {"max", "oom", "oom_kill"} <= events.keys()
+        or any(type(value) is not int or value < 0 for value in events.values())
+    ):
+        return {"invalid_live_memory_evidence"}
     failures = set()
     if memory["memory.peak"] > limit or memory["memory.current"] > limit:
         failures.add("measured_memory_budget_exceeded")
@@ -952,6 +964,23 @@ def unit_properties(unit):
     return dict(line.split("=", 1) for line in show.stdout.splitlines() if "=" in line)
 
 
+def post_exit_memory_peak(properties):
+    """An unloaded unit's optional observation cannot stand in for live evidence."""
+    require(isinstance(properties, dict), "post_exit_memory_peak_invalid")
+    if "MemoryPeak" not in properties:
+        return {"status": "unavailable", "reason": "missing"}
+    raw = properties["MemoryPeak"]
+    if raw == "[not set]":
+        return {"status": "unavailable", "reason": "not_set"}
+    require(
+        isinstance(raw, str) and re.fullmatch(r"[0-9]{1,20}", raw) is not None,
+        "post_exit_memory_peak_invalid",
+    )
+    value = int(raw)
+    require(value <= 2**64 - 1, "post_exit_memory_peak_invalid")
+    return {"status": "available", "bytes": value}
+
+
 def controller(base, repository, target_sha, output, role="consumer"):
     """CI-only launcher/evidence observer; all actual preparation stays in the unit."""
     require(os.environ.get("GITHUB_ACTIONS") == "true", "github_runner_only")
@@ -1097,6 +1126,15 @@ def controller(base, repository, target_sha, output, role="consumer"):
             "not simultaneous measured aggregate; shared system manager kernel/baseline cost remains unproved"
         )
         receipt["retained_fixture"] = str(root)
+        try:
+            receipt["post_exit_memory_peak"] = post_exit_memory_peak(
+                receipt.get("systemd", {})
+            )
+        except ProofError as error:
+            receipt["post_exit_memory_peak"] = {
+                "status": "invalid",
+                "failure": str(error),
+            }
         # The observer never sweeps interrupted files. Only the metered owner cleans.
         output.mkdir(mode=0o755, parents=True, exist_ok=True)
         raw_receipt = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
@@ -1133,8 +1171,12 @@ def controller(base, repository, target_sha, output, role="consumer"):
                 receipt["unit_final_memory"], aggregate - CONTROL_ALLOWANCE
             )
         )
-        and int(receipt["systemd"].get("MemoryPeak", "0"))
-        <= aggregate - CONTROL_ALLOWANCE,
+        and receipt["post_exit_memory_peak"]["status"] in ("available", "unavailable")
+        and (
+            receipt["post_exit_memory_peak"]["status"] == "unavailable"
+            or receipt["post_exit_memory_peak"]["bytes"]
+            <= aggregate - CONTROL_ALLOWANCE
+        ),
         "capacity_checkpoint_failed",
     )
 

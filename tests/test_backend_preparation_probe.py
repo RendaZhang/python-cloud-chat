@@ -844,15 +844,32 @@ class PreparationCheckpointTests(unittest.TestCase):
         self.assertIn("--role producer", producer)
         self.assertIn("--role consumer", consumer)
 
-    def exercise_controller(self, *, timeout=False, cleanup_failure=False):
-        root = self.root / "observer-fixture"
+    def exercise_controller(
+        self,
+        *,
+        timeout=False,
+        cleanup_failure=False,
+        systemd_properties=None,
+        live_changes=None,
+        resource_changes=None,
+        missing_live=(),
+        missing_resources=(),
+        unit_returncode=0,
+        worker_cleanup=None,
+        controls_rss=20612,
+        expect_failure=False,
+        role="consumer",
+    ):
+        root = self.root / ("observer-fixture-" + str(len(list(self.root.iterdir()))))
         root.mkdir(mode=0o700)
         memory = proof.memory_snapshot(self.root)
         proc = MagicMock()
         proc.pid = 12345678
         proc.poll.return_value = None if timeout else 0
         proc.wait.side_effect = (
-            [subprocess.TimeoutExpired("fixture", 680), 0] if timeout else [0, 0]
+            [subprocess.TimeoutExpired("fixture", 680), 0]
+            if timeout
+            else [unit_returncode, unit_returncode]
         )
 
         def launch(args, **_):
@@ -861,12 +878,25 @@ class PreparationCheckpointTests(unittest.TestCase):
             # Simulates already-saved live evidence, never a real Linux operation.
             worker = dict(
                 memory,
-                status="offline_consumer_passed_not_release_ready",
+                status=(
+                    "wheel_producer_passed_not_release_ready"
+                    if role == "producer"
+                    else "offline_consumer_passed_not_release_ready"
+                ),
                 cleanup="owned_incomplete_paths_removed_receipts_retained",
             )
             worker["memory.peak"] = 90 * proof.MIB
+            resources = dict(worker)
+            worker.update(live_changes or {})
+            resources.update(resource_changes or {})
+            for key in missing_live:
+                worker.pop(key, None)
+            for key in missing_resources:
+                resources.pop(key, None)
+            if worker_cleanup is not None:
+                worker["cleanup"] = worker_cleanup
             (root / "receipts/worker.json").write_text(json.dumps(worker))
-            (root / "receipts/resources.json").write_text(json.dumps(worker))
+            (root / "receipts/resources.json").write_text(json.dumps(resources))
             return proc
 
         original_read = Path.read_text
@@ -883,12 +913,20 @@ class PreparationCheckpointTests(unittest.TestCase):
             MemoryPeak="1024",
             Result="success",
         )
+        if systemd_properties is not None:
+            properties = systemd_properties
         second = (
             dict(properties, MainPID="987654321") if cleanup_failure else properties
         )
-        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), patch.object(
-            proof.sys, "platform", "linux"
-        ), patch.object(proof.os, "geteuid", return_value=0), patch.object(
+        with patch.dict(
+            os.environ,
+            {
+                "GITHUB_ACTIONS": "true",
+                "GITHUB_OUTPUT": str(self.root / "github-output"),
+            },
+        ), patch.object(proof.sys, "platform", "linux"), patch.object(
+            proof.os, "geteuid", return_value=0
+        ), patch.object(
             proof.tempfile, "mkdtemp", return_value=str(root)
         ), patch.object(
             Path, "read_text", read
@@ -901,20 +939,30 @@ class PreparationCheckpointTests(unittest.TestCase):
         ), patch.object(
             proof.os, "killpg"
         ) as kill, patch.object(
-            proof.resource, "getrusage", return_value=SimpleNamespace(ru_maxrss=20612)
+            proof.resource,
+            "getrusage",
+            return_value=SimpleNamespace(ru_maxrss=controls_rss),
         ), patch(
             "builtins.print"
         ):
-            if timeout or cleanup_failure:
+            if timeout or cleanup_failure or expect_failure:
                 with self.assertRaisesRegex(
                     proof.ProofError, "capacity_checkpoint_failed"
                 ):
                     proof.controller(
-                        Path(sys.executable), REPOSITORY, "a" * 40, self.root / "output"
+                        Path(sys.executable),
+                        REPOSITORY,
+                        "a" * 40,
+                        self.root / "output",
+                        role=role,
                     )
             else:
                 proof.controller(
-                    Path(sys.executable), REPOSITORY, "a" * 40, self.root / "output"
+                    Path(sys.executable),
+                    REPOSITORY,
+                    "a" * 40,
+                    self.root / "output",
+                    role=role,
                 )
         return (
             json.loads((self.root / "output/capacity.json").read_text()),
@@ -957,6 +1005,226 @@ class PreparationCheckpointTests(unittest.TestCase):
         self.assertEqual(receipt["cleanup"], "failed_fixture_preserved")
         self.assertEqual(receipt["cleanup_failure"], "owned_processes_not_reaped")
         self.assertTrue(root.exists())
+
+    def test_unloaded_systemd_sentinel_preserves_required_live_peak(self):
+        receipt, _, run, _, _, _ = self.exercise_controller(
+            role="producer",
+            systemd_properties={
+                "LoadState": "not-found",
+                "ActiveState": "inactive",
+                "ControlGroup": "",
+                "ExecMainStatus": "0",
+                "MainPID": "0",
+                "Result": "success",
+                "MemoryPeak": "[not set]",
+                "MemorySwapPeak": "[not set]",
+            },
+        )
+        self.assertEqual(
+            receipt["post_exit_memory_peak"],
+            {
+                "status": "unavailable",
+                "reason": "not_set",
+            },
+        )
+        self.assertEqual(receipt["worker"]["memory.peak"], 90 * proof.MIB)
+        self.assertEqual(receipt["last_resources"]["memory.peak"], 90 * proof.MIB)
+        self.assertFalse(
+            any(
+                call.args[0][:2] == ["systemctl", "stop"] for call in run.call_args_list
+            )
+        )
+
+    @staticmethod
+    def unloaded_properties():
+        return dict(
+            LoadState="not-found",
+            MainPID="0",
+            ControlGroup="",
+            MemoryPeak="[not set]",
+            Result="success",
+        )
+
+    def test_post_exit_missing_and_zero_are_distinct(self):
+        self.assertEqual(
+            proof.post_exit_memory_peak({}),
+            {"status": "unavailable", "reason": "missing"},
+        )
+        self.assertEqual(
+            proof.post_exit_memory_peak({"MemoryPeak": "0"}),
+            {"status": "available", "bytes": 0},
+        )
+        self.assertEqual(
+            proof.post_exit_memory_peak({"MemoryPeak": "[not set]"}),
+            {"status": "unavailable", "reason": "not_set"},
+        )
+
+    def test_post_exit_parser_bounds_unknown_values_without_echoing_them(self):
+        for raw in (
+            None,
+            True,
+            0,
+            -1,
+            "",
+            "-1",
+            "+1",
+            "1.5",
+            "NaN",
+            "infinity",
+            "unknown",
+            "n/a",
+            " 1",
+            "1\n",
+            "\u0661",
+            "9" * 21,
+            str(2**64),
+            "x" * 65536,
+        ):
+            with self.subTest(kind=type(raw).__name__), self.assertRaisesRegex(
+                proof.ProofError, "^post_exit_memory_peak_invalid$"
+            ):
+                proof.post_exit_memory_peak({"MemoryPeak": raw})
+        with self.assertRaisesRegex(
+            proof.ProofError, "^post_exit_memory_peak_invalid$"
+        ):
+            proof.post_exit_memory_peak(None)
+
+    def test_missing_post_exit_observation_still_requires_live_evidence(self):
+        properties = self.unloaded_properties()
+        del properties["MemoryPeak"]
+        receipt, *_ = self.exercise_controller(systemd_properties=properties)
+        self.assertEqual(
+            receipt["post_exit_memory_peak"],
+            {"status": "unavailable", "reason": "missing"},
+        )
+        self.assertEqual(receipt["worker"]["memory.peak"], 90 * proof.MIB)
+
+    def test_numeric_post_exit_peak_is_additional_not_replacement_evidence(self):
+        cap = proof.MEMORY_LIMIT - proof.CONTROL_ALLOWANCE
+        for value in (0, 1024, cap, cap + 1, 2**64 - 1):
+            properties = dict(self.unloaded_properties(), MemoryPeak=str(value))
+            with self.subTest(value=value):
+                receipt, *_ = self.exercise_controller(
+                    systemd_properties=properties, expect_failure=value > cap
+                )
+                self.assertEqual(
+                    receipt["post_exit_memory_peak"],
+                    {"status": "available", "bytes": value},
+                )
+                self.assertEqual(receipt["worker"]["memory.peak"], 90 * proof.MIB)
+                self.assertEqual(
+                    receipt["last_resources"]["memory.peak"], 90 * proof.MIB
+                )
+
+    def test_invalid_post_exit_value_is_recorded_and_refused(self):
+        for raw in ("-1", "not-a-counter", "", None, True, str(2**64)):
+            receipt, *_ = self.exercise_controller(
+                systemd_properties=dict(self.unloaded_properties(), MemoryPeak=raw),
+                expect_failure=True,
+            )
+            self.assertEqual(
+                receipt["post_exit_memory_peak"],
+                {"status": "invalid", "failure": "post_exit_memory_peak_invalid"},
+            )
+
+    def test_unavailable_post_exit_does_not_mask_missing_live_snapshots(self):
+        keys = ("memory.current", "memory.peak", "memory.events", "memory.swap.peak")
+        for source in ("missing_live", "missing_resources"):
+            for missing in (*[(key,) for key in keys], keys):
+                with self.subTest(source=source, missing=missing):
+                    receipt, *_ = self.exercise_controller(
+                        systemd_properties=self.unloaded_properties(),
+                        expect_failure=True,
+                        **{source: missing},
+                    )
+                    snapshot = receipt[
+                        "worker" if source == "missing_live" else "last_resources"
+                    ]
+                    self.assertEqual(
+                        proof.memory_failures(snapshot),
+                        {"invalid_live_memory_evidence"},
+                    )
+
+    def test_unavailable_post_exit_does_not_mask_invalid_live_values(self):
+        cases = (
+            {"memory.current": -1},
+            {"memory.current": False},
+            {"memory.peak": "[not set]"},
+            {"memory.peak": 1.5},
+            {"memory.swap.peak": None},
+            {"memory.swap.peak": -1},
+            {"memory.events": None},
+            {"memory.events": {}},
+            {"memory.events": {"max": 0, "oom": 0}},
+            {"memory.events": {"max": 0, "oom": 0, "oom_kill": -1}},
+            {"memory.events": {"max": False, "oom": 0, "oom_kill": 0}},
+        )
+        for source in ("live_changes", "resource_changes"):
+            for changes in cases:
+                with self.subTest(source=source, changes=changes):
+                    receipt, *_ = self.exercise_controller(
+                        systemd_properties=self.unloaded_properties(),
+                        expect_failure=True,
+                        **{source: changes},
+                    )
+                    snapshot = receipt[
+                        "worker" if source == "live_changes" else "last_resources"
+                    ]
+                    self.assertEqual(
+                        proof.memory_failures(snapshot),
+                        {"invalid_live_memory_evidence"},
+                    )
+
+    def test_unavailable_or_low_post_exit_does_not_mask_live_budget_failures(self):
+        cap = proof.MEMORY_LIMIT - proof.CONTROL_ALLOWANCE
+        cases = [
+            {"memory.current": cap + 1},
+            {"memory.peak": cap + 1},
+            {"memory.swap.peak": 1},
+        ]
+        for event in ("oom", "oom_kill", "oom_group_kill"):
+            events = dict(max=0, oom=0, oom_kill=0)
+            events[event] = 1
+            cases.append({"memory.events": events})
+        for source in ("live_changes", "resource_changes"):
+            for changes in cases:
+                for optional in ("[not set]", "1"):
+                    with self.subTest(
+                        source=source, changes=changes, optional=optional
+                    ):
+                        self.exercise_controller(
+                            systemd_properties=dict(
+                                self.unloaded_properties(), MemoryPeak=optional
+                            ),
+                            expect_failure=True,
+                            **{source: changes},
+                        )
+
+    def test_unavailable_post_exit_does_not_bypass_exit_status_or_cleanup(self):
+        for changes in (
+            {"unit_returncode": 7},
+            {"unit_returncode": -9},
+            {"live_changes": {"status": "failed"}},
+            {"worker_cleanup": "failed_fixture_preserved"},
+            {"cleanup_failure": True},
+        ):
+            with self.subTest(changes=changes):
+                receipt, *_ = self.exercise_controller(
+                    systemd_properties=self.unloaded_properties(),
+                    expect_failure=True,
+                    **changes,
+                )
+                self.assertEqual(
+                    receipt["post_exit_memory_peak"]["status"], "unavailable"
+                )
+
+    def test_unavailable_post_exit_does_not_bypass_control_allowance(self):
+        receipt, *_ = self.exercise_controller(
+            systemd_properties=self.unloaded_properties(),
+            controls_rss=proof.CONTROL_ALLOWANCE // 1024 + 1,
+            expect_failure=True,
+        )
+        self.assertFalse(receipt["controls_within_allowance"])
 
 
 if __name__ == "__main__":
