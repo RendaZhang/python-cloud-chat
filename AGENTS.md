@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Last updated: 2026-06-22
+Last updated: 2026-10-01
 
 This file gives AI coding agents the project context needed to work safely in the
 `python-cloud-chat` backend repository. The repository is public, so do not add
@@ -87,6 +87,7 @@ python -m pip check
 python -m compileall app.py app_auth.py chat_guide_prompt.py db.py mailer.py models.py security_policy.py
 ruff check .
 black --check .
+bash -n scripts/deploy_production.sh
 python -m unittest discover -s tests
 pre-commit run --all-files
 ```
@@ -131,6 +132,12 @@ approval.
 - `.github/workflows/backend-ci.yml` owns the normal backend release flow.
   Pull Requests run quality gates only. A push to `master`, or a manual dispatch
   targeting `master`, deploys only after the same quality job succeeds.
+- `scripts/deploy_production.sh` owns the existing production-side sync, dependency,
+  unit, restart and health logic. The workflow checks out its exact source commit,
+  prepares SSH, and streams this script to the server with `bash -s --` and the
+  deployment path, target SHA and force-restart flag. Do not execute the production
+  script on a developer machine or call an older server-side copy before syncing.
+  Keep deployment behavior changes in this script rather than embedding them in YAML.
 - The deploy job serializes production updates, refuses tracked production
   changes or non-fast-forward targets, and verifies that the production
   checkout ends at the exact GitHub Actions commit.

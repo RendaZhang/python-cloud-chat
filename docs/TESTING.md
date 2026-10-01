@@ -36,7 +36,7 @@
 # CloudChat 后端测试手册
 
 - **作者**: 张人大 (Renda Zhang)
-- **最后更新**: July 03, 2026, 12:49 (UTC+08:00)
+- **最后更新**: October 01, 2026 (UTC+08:00)
 
 ---
 
@@ -56,6 +56,7 @@ python -m pip check
 python -m compileall app.py app_auth.py chat_guide_prompt.py db.py mailer.py models.py security_policy.py
 ruff check .
 black --check .
+bash -n scripts/deploy_production.sh
 python -m unittest discover -s tests
 pre-commit run --all-files
 ```
@@ -66,7 +67,11 @@ Chat 限速、会话预算、重置链接以及 Flask test client 路由契约�
 PostgreSQL、邮件和外部模型边界，因此不能替代下文的真实认证、密码重置、健康检查、
 流式聊天和生产链路测试。
 
-同一工作流的生产发布只在 `master` 推送或手动触发、且上述质量门禁全部成功后运行；
+同一工作流的生产发布只在 `master` 推送或手动触发、且上述质量门禁全部成功后运行。
+workflow 检出该精确提交并通过 SSH 将 `scripts/deploy_production.sh` 传给远端 Bash。
+脚本接收部署目录、目标 SHA 和 `force_restart` 三个参数，集中管理生产部署逻辑；
+不能在本地直接执行，也不依赖服务器旧提交中是否已有此脚本。
+
 Pull Request 保持 CI-only。发布任务串行处理，部署并核对触发运行的精确提交，拒绝有已跟踪
 改动或无法快进的生产工作树。只有 `requirements.txt` 变化时才更新生产虚拟环境，只有
 Python 运行时代码、依赖变化或显式 `force_restart` 时才重启 `cloudchat.service`。每次发布
@@ -94,8 +99,9 @@ python -m unittest tests.test_service_unit
 ```
 
 该测试检查专用身份、回环绑定、状态目录、capability/文件系统/network-family/resource
-边界，以及 workflow 的候选、安装和回滚契约。Linux 上的权威语法与运行时兼容性仍由生产
-候选单元验证承担；macOS 本地测试不会假装执行 systemd。
+边界、部署脚本的候选/安装/回滚契约，以及 workflow 检出并传送精确提交脚本和执行语法检查
+的调用契约。Linux 上的权威语法与运行时兼容性仍由生产候选单元验证承担；macOS 本地测试
+不会假装执行 systemd。
 
 依赖改动还需要在隔离的 Python 3.13.14 临时环境中，对已提交的固定版本执行当前
 `pip-audit`。审计工具不应仅为本检查安装到生产虚拟环境：

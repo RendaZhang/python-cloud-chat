@@ -2,9 +2,12 @@ import unittest
 from collections import defaultdict
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 UNIT_PATH = ROOT / "deploy" / "cloudchat.service"
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "backend-ci.yml"
+DEPLOY_SCRIPT_PATH = ROOT / "scripts" / "deploy_production.sh"
 
 
 def parse_unit(path: Path) -> dict[str, dict[str, list[str]]]:
@@ -30,7 +33,8 @@ class CloudChatServiceUnitTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.unit_text = UNIT_PATH.read_text(encoding="utf-8")
-        cls.workflow_text = WORKFLOW_PATH.read_text(encoding="utf-8")
+        cls.workflow = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+        cls.deploy_script = DEPLOY_SCRIPT_PATH.read_text(encoding="utf-8")
         cls.unit = parse_unit(UNIT_PATH)
         cls.service = cls.unit["Service"]
 
@@ -92,7 +96,39 @@ class CloudChatServiceUnitTests(unittest.TestCase):
         self.assert_directive("TasksMax", "128")
         self.assert_directive("OOMScoreAdjust", "100")
 
-    def test_deploy_workflow_owns_preflight_install_and_rollback(self):
+    def test_workflow_streams_script_from_the_exact_checked_out_commit(self):
+        deploy = self.workflow["jobs"]["deploy"]
+        steps = deploy["steps"]
+        checkout_index = next(
+            i
+            for i, step in enumerate(steps)
+            if step.get("uses") == "actions/checkout@v7"
+        )
+        remote_index = next(
+            i
+            for i, step in enumerate(steps)
+            if step.get("name") == "Synchronize exact commit and verify health"
+        )
+        self.assertEqual(deploy["needs"], "quality")
+        self.assertLess(checkout_index, remote_index)
+        self.assertEqual(steps[checkout_index]["with"]["ref"], "${{ github.sha }}")
+        self.assertIs(steps[checkout_index]["with"]["persist-credentials"], False)
+        remote_command = steps[remote_index]["run"]
+        self.assertIn(
+            'bash -s -- "$DEPLOY_PATH" "$TARGET_SHA" "$FORCE_RESTART"',
+            remote_command,
+        )
+        self.assertIn("< scripts/deploy_production.sh", remote_command)
+        self.assertNotIn("<<", remote_command)
+        self.assertNotIn("systemctl", remote_command)
+
+    def test_ci_checks_deployment_script_syntax(self):
+        commands = [
+            step.get("run") for step in self.workflow["jobs"]["quality"]["steps"]
+        ]
+        self.assertIn("bash -n scripts/deploy_production.sh", commands)
+
+    def test_deploy_script_owns_preflight_install_and_rollback(self):
         required_markers = (
             "deploy/cloudchat.service",
             "cloudchat-preflight.service",
@@ -110,13 +146,13 @@ class CloudChatServiceUnitTests(unittest.TestCase):
         )
         for marker in required_markers:
             with self.subTest(marker=marker):
-                self.assertIn(marker, self.workflow_text)
+                self.assertIn(marker, self.deploy_script)
 
     def test_live_health_wait_precedes_runtime_isolation_assertion(self):
-        health_check = self.workflow_text.rfind(
+        health_check = self.deploy_script.rfind(
             "internal http://127.0.0.1:5000/auth/healthz"
         )
-        isolation_check = self.workflow_text.rfind(
+        isolation_check = self.deploy_script.rfind(
             "cloudchat.service 5000 127.0.0.1:5000"
         )
         self.assertGreater(health_check, 0)

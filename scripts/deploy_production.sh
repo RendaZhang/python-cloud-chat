@@ -1,0 +1,380 @@
+#!/usr/bin/env bash
+# Runs on production; streamed by the workflow from its exact checked-out commit.
+set -euo pipefail
+
+deploy_path="$1"
+target_sha="$2"
+force_restart="$3"
+
+[[ "$deploy_path" == /* && "$deploy_path" != *..* ]]
+[[ "$target_sha" =~ ^[0-9a-f]{40}$ ]]
+[[ "$force_restart" == "true" || "$force_restart" == "false" ]]
+
+cd "$deploy_path"
+
+branch="$(git branch --show-current)"
+if [[ "$branch" != "master" ]]; then
+  printf 'Deployment refused: expected master branch, found %s.\n' "$branch" >&2
+  exit 1
+fi
+
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  printf 'Deployment refused: production has tracked changes.\n' >&2
+  exit 1
+fi
+
+prior_sha="$(git rev-parse HEAD)"
+printf 'Prior SHA: %s\n' "$prior_sha"
+printf 'Target SHA: %s\n' "$target_sha"
+
+git fetch --no-tags origin master:refs/remotes/origin/master
+git cat-file -e "$target_sha^{commit}"
+
+if ! git merge-base --is-ancestor "$target_sha" refs/remotes/origin/master; then
+  printf 'Deployment refused: target is not on origin/master.\n' >&2
+  exit 1
+fi
+
+if ! git merge-base --is-ancestor "$prior_sha" "$target_sha"; then
+  printf 'Deployment refused: target is not a fast-forward.\n' >&2
+  exit 1
+fi
+
+requirements_changed=false
+runtime_changed=false
+unit_source_changed=false
+while IFS= read -r changed_path; do
+  case "$changed_path" in
+    requirements.txt)
+      requirements_changed=true
+      ;;
+    deploy/cloudchat.service)
+      unit_source_changed=true
+      ;;
+    tests/*)
+      ;;
+    *.py)
+      runtime_changed=true
+      ;;
+  esac
+done < <(git diff --name-only "$prior_sha" "$target_sha")
+
+if [[ "$prior_sha" != "$target_sha" ]]; then
+  git merge --ff-only "$target_sha"
+fi
+
+final_sha="$(git rev-parse HEAD)"
+if [[ "$final_sha" != "$target_sha" ]]; then
+  printf 'Deployment failed: final SHA does not match target.\n' >&2
+  exit 1
+fi
+
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  printf 'Deployment failed: tracked changes appeared after synchronization.\n' >&2
+  exit 1
+fi
+
+python_version="$(venv/bin/python --version 2>&1)"
+if [[ "$python_version" != "Python 3.13.14" ]]; then
+  printf 'Deployment failed: unexpected production Python runtime.\n' >&2
+  exit 1
+fi
+printf 'Production Python: %s\n' "$python_version"
+
+if [[ "$requirements_changed" == "true" ]]; then
+  venv/bin/python -m pip install --requirement requirements.txt
+fi
+venv/bin/python -m pip check
+
+health_is_ready() {
+  local health_url="$1"
+  local health_json
+
+  health_json="$(curl --fail --silent --show-error --max-time 10 "$health_url")" || return 1
+  HEALTH_JSON="$health_json" venv/bin/python - <<'PY'
+import json
+import os
+
+health = json.loads(os.environ["HEALTH_JSON"])
+if not all(health.get(key) is True for key in ("ok", "redis", "db")):
+    raise SystemExit(1)
+PY
+}
+
+wait_for_health() {
+  local health_name="$1"
+  local health_url="$2"
+  local attempt
+
+  for attempt in {1..30}; do
+    if health_is_ready "$health_url"; then
+      printf '%s health: ok=true redis=true db=true\n' "$health_name"
+      return 0
+    fi
+    sleep 2
+  done
+
+  printf 'Deployment failed: %s health did not recover.\n' "$health_name" >&2
+  return 1
+}
+
+listener_is_exact() {
+  local port="$1"
+  local expected_address="$2"
+  local addresses
+
+  addresses="$(ss -H -ltn "sport = :$port" | awk '{print $4}')"
+  [[ "$addresses" == "$expected_address" ]]
+}
+
+service_process_is_isolated() {
+  local unit_name="$1"
+  local port="$2"
+  local expected_address="$3"
+  local effective_group
+  local effective_user
+  local main_pid
+  local process_user
+
+  effective_user="$(systemctl show "$unit_name" --property=User --value)"
+  effective_group="$(systemctl show "$unit_name" --property=Group --value)"
+  if [[ "$effective_user" != "cloudchat" || "$effective_group" != "cloudchat" ]]; then
+    printf 'Isolation check failed: effective service identity is not cloudchat.\n' >&2
+    return 1
+  fi
+
+  main_pid="$(systemctl show "$unit_name" --property=MainPID --value)"
+  if [[ ! "$main_pid" =~ ^[0-9]+$ || "$main_pid" -le 1 ]]; then
+    printf 'Isolation check failed: service has no live main PID.\n' >&2
+    return 1
+  fi
+  process_user="$(ps -o user= -p "$main_pid" | tr -d '[:space:]')"
+  if [[ "$process_user" != "cloudchat" ]]; then
+    printf 'Isolation check failed: main process is not owned by cloudchat.\n' >&2
+    return 1
+  fi
+  if ! grep -Eq '^CapBnd:[[:space:]]+0{16}$' "/proc/$main_pid/status"; then
+    printf 'Isolation check failed: capability bounding set is not empty.\n' >&2
+    return 1
+  fi
+  if ! listener_is_exact "$port" "$expected_address"; then
+    printf 'Isolation check failed: listener is not the sole expected loopback socket.\n' >&2
+    return 1
+  fi
+}
+
+ensure_cloudchat_account() {
+  local account_uid
+  local account_home
+  local account_shell
+
+  if ! getent group cloudchat >/dev/null; then
+    groupadd --system cloudchat
+  fi
+
+  if ! id -u cloudchat >/dev/null 2>&1; then
+    useradd \
+      --system \
+      --gid cloudchat \
+      --home-dir /var/lib/cloudchat \
+      --shell /usr/sbin/nologin \
+      --no-create-home \
+      cloudchat
+  fi
+
+  account_uid="$(id -u cloudchat)"
+  account_home="$(getent passwd cloudchat | cut -d: -f6)"
+  account_shell="$(getent passwd cloudchat | cut -d: -f7)"
+  [[ "$account_uid" =~ ^[0-9]+$ && "$account_uid" -ne 0 ]]
+  [[ "$account_home" == "/var/lib/cloudchat" ]]
+  [[ "$account_shell" == "/usr/sbin/nologin" ]]
+  [[ "$(id -gn cloudchat)" == "cloudchat" ]]
+
+  if ! awk -F: '$1 == "cloudchat" && $2 ~ /^[!*]/ { found=1 } END { exit !found }' /etc/shadow; then
+    usermod --lock cloudchat
+  fi
+  awk -F: '$1 == "cloudchat" && $2 ~ /^[!*]/ { found=1 } END { exit !found }' /etc/shadow
+  printf 'cloudchat service account: dedicated and locked\n'
+}
+
+cleanup_preflight_unit() {
+  systemctl stop cloudchat-preflight.service >/dev/null 2>&1 || true
+  rm -f /run/systemd/system/cloudchat-preflight.service
+  systemctl daemon-reload
+  systemctl reset-failed cloudchat-preflight.service >/dev/null 2>&1 || true
+}
+
+run_unit_preflight() {
+  local canonical_unit="$1"
+  local preflight_unit=/run/systemd/system/cloudchat-preflight.service
+
+  cleanup_preflight_unit
+  CANONICAL_UNIT="$canonical_unit" PREFLIGHT_UNIT="$preflight_unit" venv/bin/python - <<'PY'
+import os
+from pathlib import Path
+
+source = Path(os.environ["CANONICAL_UNIT"])
+destination = Path(os.environ["PREFLIGHT_UNIT"])
+text = source.read_text(encoding="utf-8")
+replacements = (
+    (
+        "Description=CloudChat Flask App with Gunicorn",
+        "Description=CloudChat Flask App with Gunicorn (preflight)",
+    ),
+    ("Environment=HOME=/var/lib/cloudchat", "Environment=HOME=/run/cloudchat-preflight"),
+    ("StateDirectory=cloudchat\nStateDirectoryMode=0750\n", ""),
+    ("RuntimeDirectory=cloudchat", "RuntimeDirectory=cloudchat-preflight"),
+    ("--worker-tmp-dir /run/cloudchat", "--worker-tmp-dir /run/cloudchat-preflight"),
+    ("--bind 127.0.0.1:5000", "--bind 127.0.0.1:5001"),
+    ("Restart=always", "Restart=no\nRuntimeMaxSec=180"),
+)
+for old, new in replacements:
+    if text.count(old) != 1:
+        raise SystemExit(f"Unexpected canonical unit marker count: {old}")
+    text = text.replace(old, new)
+destination.write_text(text, encoding="utf-8")
+destination.chmod(0o644)
+PY
+
+  if ! systemd-analyze verify "$preflight_unit"; then
+    cleanup_preflight_unit
+    return 1
+  fi
+  if ! systemctl daemon-reload || ! systemctl start cloudchat-preflight.service; then
+    cleanup_preflight_unit
+    return 1
+  fi
+  if ! wait_for_health preflight http://127.0.0.1:5001/auth/healthz; then
+    cleanup_preflight_unit
+    return 1
+  fi
+  if ! service_process_is_isolated \
+    cloudchat-preflight.service 5001 127.0.0.1:5001; then
+    printf 'Deployment failed: preflight identity, capability, or listener check failed.\n' >&2
+    cleanup_preflight_unit
+    return 1
+  fi
+
+  cleanup_preflight_unit
+  printf 'CloudChat isolated unit preflight: passed\n'
+}
+
+canonical_unit="$deploy_path/deploy/cloudchat.service"
+installed_unit=/etc/systemd/system/cloudchat.service
+test -f "$canonical_unit"
+ensure_cloudchat_account
+systemd-analyze verify "$canonical_unit"
+
+unit_install_required=false
+if ! cmp --silent "$canonical_unit" "$installed_unit"; then
+  unit_install_required=true
+fi
+
+unit_replaced=false
+unit_backup=""
+unit_staging=""
+
+rollback_cloudchat_unit() {
+  if [[ "$unit_replaced" != "true" || -z "$unit_backup" ]]; then
+    return 1
+  fi
+  install --owner=root --group=root --mode=0644 "$unit_backup" "$installed_unit"
+  systemctl daemon-reload
+  systemctl restart cloudchat.service
+  wait_for_health rollback-internal http://127.0.0.1:5000/auth/healthz
+  wait_for_health rollback-public https://www.rendazhang.com/cloudchat/auth/healthz
+}
+
+if [[ "$unit_install_required" == "true" ]]; then
+  if [[ ! -f "$installed_unit" ]]; then
+    printf 'Deployment refused: no prior cloudchat.service exists for rollback.\n' >&2
+    exit 1
+  fi
+  trap cleanup_preflight_unit EXIT
+  run_unit_preflight "$canonical_unit"
+  trap - EXIT
+  unit_backup="$(mktemp /run/cloudchat.service.rollback.XXXXXX)"
+  cp --preserve=mode,ownership,timestamps "$installed_unit" "$unit_backup"
+  unit_staging="$(mktemp /etc/systemd/system/.cloudchat.service.XXXXXX)"
+  if ! install --owner=root --group=root --mode=0644 "$canonical_unit" "$unit_staging" ||
+    ! mv --force "$unit_staging" "$installed_unit"; then
+    rm -f "$unit_staging" "$unit_backup"
+    printf 'Deployment failed: canonical service unit installation failed.\n' >&2
+    exit 1
+  fi
+  unit_staging=""
+  unit_replaced=true
+  if ! systemctl daemon-reload; then
+    if ! rollback_cloudchat_unit; then
+      printf 'CRITICAL: cloudchat.service unit rollback failed after daemon-reload.\n' >&2
+    fi
+    rm -f "$unit_backup"
+    exit 1
+  fi
+fi
+
+restart_required=false
+if [[ "$runtime_changed" == "true" ||
+      "$requirements_changed" == "true" ||
+      "$unit_install_required" == "true" ||
+      "$force_restart" == "true" ]]; then
+  restart_required=true
+fi
+
+printf 'Final SHA: %s\n' "$final_sha"
+printf 'Requirements changed: %s\n' "$requirements_changed"
+printf 'Runtime Python changed: %s\n' "$runtime_changed"
+printf 'Service unit source changed: %s\n' "$unit_source_changed"
+printf 'Service unit install required: %s\n' "$unit_install_required"
+printf 'Force restart: %s\n' "$force_restart"
+printf 'Restart required: %s\n' "$restart_required"
+
+deployment_ok=true
+if [[ "$restart_required" == "true" ]]; then
+  if ! systemctl restart cloudchat.service; then
+    printf 'Deployment failed: cloudchat.service did not restart.\n' >&2
+    deployment_ok=false
+  fi
+fi
+
+if [[ "$deployment_ok" == "true" ]] && ! systemctl is-active --quiet cloudchat.service; then
+  printf 'Deployment failed: cloudchat.service is not active.\n' >&2
+  deployment_ok=false
+fi
+
+if [[ "$deployment_ok" == "true" ]] && ! cmp --silent "$canonical_unit" "$installed_unit"; then
+  printf 'Deployment failed: installed service unit drifted from the exact commit.\n' >&2
+  deployment_ok=false
+fi
+if [[ "$deployment_ok" == "true" ]] && ! wait_for_health \
+  internal http://127.0.0.1:5000/auth/healthz; then
+  deployment_ok=false
+fi
+if [[ "$deployment_ok" == "true" ]] && ! service_process_is_isolated \
+  cloudchat.service 5000 127.0.0.1:5000; then
+  printf 'Deployment failed: live identity, capability, or listener check failed.\n' >&2
+  deployment_ok=false
+fi
+if [[ "$deployment_ok" == "true" ]] && ! wait_for_health \
+  public https://www.rendazhang.com/cloudchat/auth/healthz; then
+  deployment_ok=false
+fi
+
+if [[ "$deployment_ok" != "true" ]]; then
+  if [[ "$unit_replaced" == "true" ]]; then
+    if rollback_cloudchat_unit; then
+      printf 'Previous cloudchat.service unit restored and healthy.\n' >&2
+    else
+      printf 'CRITICAL: cloudchat.service unit rollback failed.\n' >&2
+    fi
+  fi
+  if [[ -n "$unit_backup" ]]; then
+    rm -f "$unit_backup"
+  fi
+  exit 1
+fi
+
+if [[ -n "$unit_backup" ]]; then
+  rm -f "$unit_backup"
+fi
+printf 'cloudchat.service: active, dedicated user, empty capabilities, loopback-only\n'

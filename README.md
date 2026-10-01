@@ -121,6 +121,9 @@ python app.py  # 或自行配置 debug server
   `127.0.0.1:5001` 运行候选并验证身份、capability、监听和完整健康，再备份/安装并只重启
   `cloudchat.service`。正式验证失败会恢复之前的单元。文档或普通 workflow 变更不重启；
   Python 代码、依赖、单元变化或显式 `force_restart` 才触发受控重启。
+* **发布脚本**：生产端逻辑集中在 `scripts/deploy_production.sh`。workflow 检出本次提交，
+  准备 SSH 并把该脚本传给服务器执行，不依赖服务器预先存在的新脚本，也不在 YAML 中
+  内联部署逻辑。此脚本仅供生产发布调用，不要在开发电脑直接运行。
 
 > 详细的运维参数、systemd override、内核与 journald 优化，见 Nginx 项目下的文档内容 ：📄 [CloudChat 服务器配置运行手册](https://github.com/RendaZhang/nginx-conf/blob/master/docs/SERVER_RUNBOOK.md)。
 
@@ -308,8 +311,8 @@ BUG 记录和修复状态请查看文档：📄 [后端 BUG 跟踪数据库](htt
 
 `.github/workflows/backend-ci.yml` 会在 Pull Request、推送到 `master` 以及手动触发时，使用
 Python 3.13.14 安装已提交的 `requirements.txt`，并执行依赖一致性、编译、Ruff、Black、
-标准库 `unittest` 与全部 pre-commit hooks。失败的检查会在对应提交或 PR 上显示为失败的
-GitHub Actions 状态。
+部署脚本的 `bash -n` 语法检查、标准库 `unittest` 与全部 pre-commit hooks。失败的检查会在
+对应提交或 PR 上显示为失败的 GitHub Actions 状态。
 
 Pull Request 不会部署。`master` 的推送或手动触发只有在上述门禁成功后才进入串行生产发布：
 工作流拒绝带有已跟踪改动或无法快进的生产工作树，部署并核对当前 Actions 的精确提交，
