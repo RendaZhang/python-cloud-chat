@@ -91,6 +91,19 @@ over-budget/OOM/swap, excess control usage, nonzero exit and incomplete cleanup
 still refuse. Numeric post-exit excess also refuses. These tests use fixtures and
 mock systemd; they do not rerun or retrospectively pass the failed Linux checkpoint.
 
+Correction run `36803492560` at `f75a869` passed the producer and actual measured
+consumer ingress plus 73-wheel verification, but failed at the network-isolation
+child. Its underlying `child_exit_1` cause is unknown; offline seed/install/native
+checks did not run. Namespace-proof tests now emulate inherited sysfs differing from
+the current socket view, unchanged namespace identity, unexpected interfaces and
+successful external connections. A strict 2048-byte report carries controlled failure
+codes, namespace/interface facts and numeric exit/errno only. Missing, malformed,
+duplicate-key and oversized reports refuse. Worker fixtures prove failure evidence
+survives workspace cleanup and seed/install never starts; they neither create Linux
+namespaces nor prove live isolation. The existing 10-second deadline, real unshare
+execution and all resource/exit/control/cleanup gates remain required for a separately
+authorized Linux checkpoint.
+
 后端 GitHub Actions 在 Pull Request、推送到 `master` 与手动触发时使用 Python 3.13.14，
 安装已提交的 `requirements.txt`，并依次执行以下仓库级门禁：
 

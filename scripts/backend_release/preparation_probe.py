@@ -235,20 +235,29 @@ def hashed_requirements(wheel_directory, expected, diagnostics=None):
     return manifest, "\n".join(lines) + "\n"
 
 
-def command(args, *, root, timeout, offline=False, capture=False, extra_env=None):
+def command(
+    args, *, root, timeout, offline=False, capture=False, extra_env=None, outcome=None
+):
     if offline:
         args = ["/usr/bin/unshare", "--net", "--", *args]
     log = root / "workspace/command.log"
     with log.open("wb") as output:
-        proc = subprocess.Popen(
-            args,
-            cwd=root,
-            env={**clean_environment(root), **(extra_env or {})},
-            stdin=subprocess.DEVNULL,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
+        try:
+            proc = subprocess.Popen(
+                args,
+                cwd=root,
+                env={**clean_environment(root), **(extra_env or {})},
+                stdin=subprocess.DEVNULL,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        except OSError as error:
+            if outcome is not None:
+                outcome.update(state="launch_failed", errno=bounded_errno(error))
+            raise
+        if outcome is not None:
+            outcome["state"] = "started"
         try:
             deadline = time.monotonic() + timeout
             while proc.poll() is None:
@@ -270,9 +279,12 @@ def command(args, *, root, timeout, offline=False, capture=False, extra_env=None
             except ProcessLookupError:
                 pass
             proc.wait(timeout=10)
+            if outcome is not None:
+                outcome.update(state="reaped", returncode=proc.returncode)
         require(log.stat().st_size <= MIB, "child_output_bound")
         if code:
-            print(log.read_text(errors="replace")[-4000:], flush=True)
+            if outcome is None:
+                print(log.read_text(errors="replace")[-4000:], flush=True)
             raise ProofError("child_exit_" + str(code))
         return log.read_text() if capture else None
 
@@ -295,15 +307,238 @@ print(json.dumps({
 """
 
 NETWORK_PROBE = r"""
-import json, pathlib, socket
-interfaces = sorted(p.name for p in pathlib.Path('/sys/class/net').iterdir())
-assert interfaces == ['lo'], interfaces
-for address in ('192.0.2.1', '1.1.1.1'):
-    with socket.socket() as sock:
-        sock.settimeout(1)
-        assert sock.connect_ex((address, 443)) != 0
-print(json.dumps({'interfaces': interfaces, 'external_connect': 'blocked'}))
+import json, os, re, socket, sys
+result = {
+    'schema': 1, 'status': 'failed', 'code': 'unexpected_probe_error',
+    'parent_namespace': int(sys.argv[1]), 'child_namespace': None,
+    'interface_count': None, 'loopback_count': None,
+    'connect_errnos': [], 'errno': None,
+}
+operation = 'namespace_read_failed'
+try:
+    identity = os.readlink('/proc/self/ns/net')
+    match = re.fullmatch(r'net:\[([0-9]{1,20})\]', identity)
+    if match is None or not 0 < int(match[1]) < 2**64:
+        result['code'] = 'namespace_read_failed'
+    else:
+        result['child_namespace'] = int(match[1])
+        if result['child_namespace'] == result['parent_namespace']:
+            result['code'] = 'namespace_unchanged'
+        else:
+            operation = 'interface_query_failed'
+            interfaces = socket.if_nameindex()
+            result['interface_count'] = len(interfaces)
+            result['loopback_count'] = sum(name == 'lo' for _, name in interfaces)
+            if result['interface_count'] != 1 or result['loopback_count'] != 1:
+                result['code'] = 'interfaces_not_loopback_only'
+            else:
+                operation = 'connect_probe_failed'
+                for address in ('192.0.2.1', '1.1.1.1'):
+                    with socket.socket() as sock:
+                        sock.settimeout(1)
+                        result['connect_errnos'].append(sock.connect_ex((address, 443)))
+                if 0 in result['connect_errnos']:
+                    result['code'] = 'external_connect_succeeded'
+                else:
+                    result.update(status='passed', code='ok')
+except OSError as error:
+    result['code'] = operation
+    if type(error.errno) is int and 0 < error.errno <= 4095:
+        result['errno'] = error.errno
+except Exception:
+    result['code'] = 'unexpected_probe_error'
+print(json.dumps(result, separators=(',', ':'), allow_nan=False), flush=True)
+raise SystemExit(0 if result['status'] == 'passed' else 1)
 """
+
+
+def bounded_errno(error):
+    value = getattr(error, "errno", None)
+    return value if type(value) is int and 0 < value <= 4095 else None
+
+
+def network_namespace_id():
+    raw = os.readlink("/proc/self/ns/net")
+    match = re.fullmatch(r"net:\[([0-9]{1,20})\]", raw)
+    require(
+        match is not None and 0 < int(match[1]) < 2**64, "namespace_identity_invalid"
+    )
+    return int(match[1])
+
+
+def network_report_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "network_report_invalid")
+        result[key] = value
+    return result
+
+
+def read_network_report(path, parent):
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(2049)
+    except FileNotFoundError:
+        raise ProofError("network_report_missing") from None
+    except OSError:
+        raise ProofError("network_report_unreadable") from None
+    require(len(raw) <= 2048, "network_report_oversized")
+    require(raw.strip(), "network_report_missing")
+    try:
+        value = json.loads(raw, object_pairs_hook=network_report_object)
+    except (ValueError, RecursionError):
+        raise ProofError("network_report_invalid") from None
+    codes = {
+        "ok",
+        "namespace_unchanged",
+        "interfaces_not_loopback_only",
+        "external_connect_succeeded",
+        "namespace_read_failed",
+        "interface_query_failed",
+        "connect_probe_failed",
+        "unexpected_probe_error",
+    }
+    require(
+        isinstance(value, dict)
+        and value.keys()
+        == {
+            "schema",
+            "status",
+            "code",
+            "parent_namespace",
+            "child_namespace",
+            "interface_count",
+            "loopback_count",
+            "connect_errnos",
+            "errno",
+        },
+        "network_report_invalid",
+    )
+    require(
+        type(value["schema"]) is int
+        and value["schema"] == 1
+        and isinstance(value["code"], str)
+        and value["code"] in codes
+        and value["status"] == ("passed" if value["code"] == "ok" else "failed")
+        and type(value["parent_namespace"]) is int
+        and value["parent_namespace"] == parent,
+        "network_report_invalid",
+    )
+    for key, minimum, maximum in (
+        ("child_namespace", 1, 2**64 - 1),
+        ("interface_count", 0, 65535),
+        ("loopback_count", 0, 65535),
+        ("errno", 1, 4095),
+    ):
+        field = value[key]
+        require(
+            field is None or (type(field) is int and minimum <= field <= maximum),
+            "network_report_invalid",
+        )
+    errnos = value["connect_errnos"]
+    require(
+        isinstance(errnos, list)
+        and len(errnos) <= 2
+        and all(type(code) is int and 0 <= code <= 4095 for code in errnos),
+        "network_report_invalid",
+    )
+    if value["status"] == "passed":
+        require(
+            value["child_namespace"] is not None
+            and value["child_namespace"] != parent
+            and value["interface_count"] == value["loopback_count"] == 1
+            and len(errnos) == 2
+            and all(errnos)
+            and value["errno"] is None,
+            "network_report_invalid",
+        )
+    if value["code"] == "namespace_unchanged":
+        require(value["child_namespace"] == parent, "network_report_invalid")
+    elif value["code"] == "interfaces_not_loopback_only":
+        require(
+            value["interface_count"] is not None
+            and value["loopback_count"] is not None
+            and (value["interface_count"], value["loopback_count"]) != (1, 1),
+            "network_report_invalid",
+        )
+    elif value["code"] == "external_connect_succeeded":
+        require(len(errnos) == 2 and 0 in errnos, "network_report_invalid")
+    return value
+
+
+def prove_network_isolation(base, root, receipt):
+    # Retain only validated facts, including on nonzero exit, before owner cleanup.
+    diagnostic = {"status": "failed", "failure": "unknown"}
+    receipt["network"] = diagnostic
+    outcome = {"state": "not_started", "returncode": None, "errno": None}
+    diagnostic["command"] = outcome
+    try:
+        try:
+            parent = network_namespace_id()
+        except (OSError, ProofError) as error:
+            diagnostic.update(
+                failure="parent_namespace_unavailable", errno=bounded_errno(error)
+            )
+            raise ProofError("network_isolation_failed") from None
+        diagnostic["parent_namespace"] = parent
+        command_failed = False
+        try:
+            command(
+                [str(base), "-I", "-B", "-c", NETWORK_PROBE, str(parent)],
+                root=root,
+                timeout=10,
+                offline=True,
+                outcome=outcome,
+            )
+        except Exception as error:
+            command_failed = True
+            diagnostic["command_failure"] = (
+                str(error)
+                if isinstance(error, ProofError)
+                and str(error)
+                in {
+                    "child_deadline",
+                    "child_output_bound",
+                    "disk_budget_exceeded",
+                }
+                else "command_failed"
+            )
+        if outcome["state"] in ("started", "reaped"):
+            try:
+                diagnostic["probe"] = read_network_report(
+                    root / "workspace/command.log", parent
+                )
+                diagnostic["report_status"] = "valid"
+            except ProofError as error:
+                diagnostic["report_status"] = str(error)
+        else:
+            diagnostic["report_status"] = "not_started"
+        report = diagnostic.get("probe")
+        if outcome["state"] == "launch_failed":
+            diagnostic["failure"] = "launch_failed"
+        elif report is not None and report["status"] == "failed":
+            diagnostic["failure"] = (
+                "probe_invariant_failed"
+                if report["code"]
+                in {
+                    "namespace_unchanged",
+                    "interfaces_not_loopback_only",
+                    "external_connect_succeeded",
+                }
+                else "probe_reported_failure"
+            )
+        elif (
+            command_failed or outcome["state"] != "reaped" or outcome["returncode"] != 0
+        ):
+            diagnostic["failure"] = "child_failed_unknown"
+        elif report is None:
+            diagnostic["failure"] = "report_unavailable"
+        else:
+            diagnostic.update(status="passed", failure=None)
+    finally:
+        write_receipt(root, receipt)
+    require(diagnostic["status"] == "passed", "network_isolation_failed")
+
 
 INVENTORY_PROBE = r"""
 import importlib, importlib.metadata, json, pathlib, re, sys
@@ -773,15 +1008,7 @@ def worker(root, base, repository, target_sha, role="consumer"):
         locked = root / "workspace/install.txt"
         locked.write_text(hashed)
         enter_stage(root, receipt, meter, "network_isolation")
-        receipt["network"] = json.loads(
-            command(
-                [str(base), "-I", "-B", "-c", NETWORK_PROBE],
-                root=root,
-                timeout=10,
-                offline=True,
-                capture=True,
-            )
-        )
+        prove_network_isolation(base, root, receipt)
         enter_stage(root, receipt, meter, "final_path_seed")
         final = root / "envs/candidate"
         require(not final.exists(), "final_path_already_exists")

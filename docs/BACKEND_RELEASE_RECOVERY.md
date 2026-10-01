@@ -272,6 +272,26 @@ evidence, control allowance, worker exit/status and cleanup gates still apply wh
 the optional observation is unavailable. Portable tests cover these cases and
 lifecycle ordering but are not a Linux systemd run.
 
+The namespace proof uses the parent's and child's kernel network-namespace identities,
+the child's `socket.if_nameindex()` view, and the existing two fixed bounded connection
+checks. Success requires a changed namespace, loopback only, blocked connections and
+a zero child exit. `unshare --net` remains required for seed/install/verification;
+there is no mount, privilege or online fallback. The inherited `/sys/class/net` view
+is not an acceptance gate: Linux binds the sysfs mount context to a network namespace,
+and iproute2 explicitly handles a sysfs remount when changing that context. See
+[Linux sysfs context](https://raw.githubusercontent.com/torvalds/linux/master/fs/sysfs/mount.c),
+[iproute2 namespace switching](https://raw.githubusercontent.com/iproute2/iproute2/main/lib/namespace.c)
+and [Python socket interfaces](https://docs.python.org/3.13/library/socket.html#socket.if_nameindex).
+This is a source-backed validation concern, not proof of a past failure's cause.
+
+Before cleanup, network diagnostics are copied into the main receipt even on nonzero
+exit. The child report is limited to 2048 bytes, exact keys, controlled codes, numeric
+namespace identities/errno and interface counts; raw interface names, address lists,
+stderr tails and environment values are not retained. Duplicate keys, malformed or
+oversized reports refuse. Launcher errors, reported invariant failures, absent/invalid
+reports and unclassified child failure remain distinct. Missing evidence stays unknown;
+no diagnostic can turn a failed child, resource gate or uncertain cleanup into success.
+
 Each name in the probe's `STAGES` allowlist can occur once per role. Producer stages
 include packaging; consumer stages include ingress and artifact verification. Missing
 stages are not executed, not implicitly successful. Nominal 100 ms sampling also
@@ -296,7 +316,11 @@ and finalization. Diagnosis is not permission to raise a budget or change a pin.
 The earlier checkpoints failed before install. Split run `36801586242` at `e3420d8`
 completed the producer worker but failed in the external observer when it attempted
 to parse the unloaded unit's `[not set]` post-exit peak as an integer. The consumer
-was skipped. The local correction and portable regressions do not relabel that run
+was skipped. Correction run `36803492560` at `f75a869` passed the producer and real
+measured consumer ingress/73-wheel metadata verification, then failed at
+`network_isolation` with `child_exit_1`. Its suppressed/removed child output does not
+establish the underlying cause. Seed/install/verification never ran. The local
+namespace correction and diagnostic regressions do not relabel either failed run
 successful or establish offline installation or capacity acceptance; a new Linux
 experiment requires separate review and authorization.
 See the [wheel specification](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)

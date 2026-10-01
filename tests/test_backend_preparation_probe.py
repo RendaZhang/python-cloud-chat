@@ -9,6 +9,7 @@ import sys
 import tempfile
 import stat
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch, MagicMock
 from types import SimpleNamespace
 import urllib.error
@@ -752,6 +753,476 @@ class PreparationCheckpointTests(unittest.TestCase):
             popen.call_args.args[0][:3], ["/usr/bin/unshare", "--net", "--"]
         )
         self.assertFalse((self.root / "envs/candidate").exists())
+
+    def network_report(self):
+        return dict(
+            schema=1,
+            status="passed",
+            code="ok",
+            parent_namespace=101,
+            child_namespace=102,
+            interface_count=1,
+            loopback_count=1,
+            connect_errnos=[101, 101],
+            errno=None,
+        )
+
+    def execute_network_probe(
+        self, *, identity="net:[102]", interfaces=None, errnos=(101, 101)
+    ):
+        output = io.StringIO()
+        with patch.object(proof.os, "readlink", return_value=identity), patch(
+            "socket.if_nameindex",
+            return_value=interfaces if interfaces is not None else [(1, "lo")],
+        ) as query, patch("socket.socket") as factory, patch.object(
+            sys, "argv", ["-c", "101"]
+        ), patch.object(
+            Path, "iterdir", return_value=iter([Path("lo"), Path("private-uplink")])
+        ) as sysfs:
+            factory.return_value.__enter__.return_value.connect_ex.side_effect = errnos
+            with redirect_stdout(output), self.assertRaises(SystemExit) as stop:
+                exec(proof.NETWORK_PROBE, {})
+        return json.loads(output.getvalue()), stop.exception.code, query, factory, sysfs
+
+    def test_network_probe_uses_current_socket_view_not_inherited_sysfs(self):
+        report, code, query, factory, sysfs = self.execute_network_probe()
+        self.assertEqual(code, 0)
+        self.assertEqual(report, self.network_report())
+        query.assert_called_once_with()
+        sysfs.assert_not_called()
+        child = factory.return_value.__enter__.return_value
+        self.assertEqual(
+            [c.args for c in child.connect_ex.call_args_list],
+            [
+                (("192.0.2.1", 443),),
+                (("1.1.1.1", 443),),
+            ],
+        )
+        self.assertEqual(
+            [c.args for c in child.settimeout.call_args_list], [(1,), (1,)]
+        )
+        self.assertNotIn("private-uplink", json.dumps(report))
+
+    def test_network_probe_refuses_unchanged_namespace_before_connections(self):
+        report, code, query, factory, _ = self.execute_network_probe(
+            identity="net:[101]"
+        )
+        self.assertEqual((code, report["code"]), (1, "namespace_unchanged"))
+        query.assert_not_called()
+        factory.assert_not_called()
+
+    def test_network_probe_refuses_unexpected_interfaces_without_names(self):
+        for interfaces in (
+            [],
+            [(1, "private-interface")],
+            [(1, "lo"), (2, "private-interface")],
+            [(1, "lo"), (2, "lo")],
+        ):
+            report, code, _, factory, _ = self.execute_network_probe(
+                interfaces=interfaces
+            )
+            self.assertEqual(
+                (code, report["code"]), (1, "interfaces_not_loopback_only")
+            )
+            factory.assert_not_called()
+            self.assertNotIn("private-interface", json.dumps(report))
+
+    def test_network_probe_refuses_successful_egress(self):
+        for errnos in ((0, 101), (101, 0), (0, 0)):
+            report, code, *_ = self.execute_network_probe(errnos=errnos)
+            self.assertEqual((code, report["code"]), (1, "external_connect_succeeded"))
+
+    def test_network_probe_errors_have_only_category_and_numeric_errno(self):
+        for target, category in (
+            ("os.readlink", "namespace_read_failed"),
+            ("socket.if_nameindex", "interface_query_failed"),
+            ("socket.socket", "connect_probe_failed"),
+        ):
+            output = io.StringIO()
+            with patch("os.readlink", return_value="net:[102]"), patch(
+                "socket.if_nameindex", return_value=[(1, "lo")]
+            ), patch(
+                target, side_effect=OSError(1, "private-token/server-body")
+            ), patch.object(
+                sys, "argv", ["-c", "101"]
+            ), redirect_stdout(
+                output
+            ), self.assertRaises(
+                SystemExit
+            ):
+                exec(proof.NETWORK_PROBE, {})
+            report = json.loads(output.getvalue())
+            self.assertEqual((report["code"], report["errno"]), (category, 1))
+            self.assertNotIn("private", output.getvalue())
+
+    def test_parent_namespace_identity_is_strict_and_bounded(self):
+        for raw in (
+            "net:[0]",
+            "net:[-1]",
+            "mnt:[101]",
+            "private",
+            "net:[" + "9" * 21 + "]",
+            "net:[18446744073709551616]",
+        ):
+            with patch.object(
+                proof.os, "readlink", return_value=raw
+            ), self.assertRaisesRegex(proof.ProofError, "namespace_identity_invalid"):
+                proof.network_namespace_id()
+        with patch.object(proof.os, "readlink", return_value="net:[101]"):
+            self.assertEqual(proof.network_namespace_id(), 101)
+
+    def test_network_report_refuses_missing_empty_invalid_and_oversized_data(self):
+        path = self.root / "workspace/network.json"
+        with self.assertRaisesRegex(proof.ProofError, "network_report_missing"):
+            proof.read_network_report(path, 101)
+        for raw, failure in (
+            (b"", "missing"),
+            (b"{", "invalid"),
+            (b"[]", "invalid"),
+            (b"{}", "invalid"),
+            (b"\xff", "invalid"),
+            (b"x" * 2049, "oversized"),
+            (b" " * 2049, "oversized"),
+        ):
+            path.write_bytes(raw)
+            with self.assertRaisesRegex(proof.ProofError, "network_report_" + failure):
+                proof.read_network_report(path, 101)
+
+    def test_network_report_strict_schema_rechecks_success_not_only_label(self):
+        path = self.root / "workspace/network.json"
+        for changes in (
+            {"extra": "private"},
+            {"code": "private"},
+            {"code": []},
+            {"schema": True},
+            {"parent_namespace": 100},
+            {"parent_namespace": True},
+            {"child_namespace": 101},
+            {"child_namespace": None},
+            {"child_namespace": -1},
+            {"interface_count": 2},
+            {"loopback_count": True},
+            {"errno": 1},
+            {"connect_errnos": [0, 101]},
+            {"connect_errnos": [101]},
+            {"connect_errnos": [True, 101]},
+            {"connect_errnos": [-1, 101]},
+            {"connect_errnos": [4096, 101]},
+            {"connect_errnos": "private"},
+            {"status": "failed"},
+            {"child_namespace": float("nan")},
+        ):
+            path.write_text(json.dumps(dict(self.network_report(), **changes)))
+            with self.subTest(changes=changes), self.assertRaisesRegex(
+                proof.ProofError, "network_report_invalid"
+            ):
+                proof.read_network_report(path, 101)
+        raw = json.dumps(self.network_report())
+        path.write_text(raw.replace('"schema": 1', '"schema": 1, "schema": 1'))
+        with self.assertRaisesRegex(proof.ProofError, "network_report_invalid"):
+            proof.read_network_report(path, 101)
+        path.write_text(raw)
+        self.assertEqual(proof.read_network_report(path, 101), self.network_report())
+
+    def exercise_network_proof(self, raw, *, code=0, command_error=None):
+        receipt = {}
+
+        def launch(args, **kwargs):
+            self.assertEqual(kwargs["timeout"], 10)
+            self.assertTrue(kwargs["offline"])
+            self.assertEqual(args[-1], "101")
+            kwargs["outcome"].update(state="reaped", returncode=code)
+            if raw is not None:
+                (self.root / "workspace/command.log").write_bytes(raw)
+            if command_error:
+                raise command_error
+            if code:
+                raise proof.ProofError("child_exit_" + str(code))
+
+        with patch.object(
+            proof, "network_namespace_id", return_value=101
+        ), patch.object(proof, "command", side_effect=launch):
+            if (
+                code
+                or command_error
+                or raw != json.dumps(self.network_report()).encode()
+            ):
+                with self.assertRaisesRegex(
+                    proof.ProofError, "network_isolation_failed"
+                ):
+                    proof.prove_network_isolation(
+                        Path(sys.executable), self.root, receipt
+                    )
+            else:
+                proof.prove_network_isolation(Path(sys.executable), self.root, receipt)
+        saved = json.loads((self.root / "receipts/worker.json").read_text())
+        self.assertEqual(saved, receipt)
+        return saved["network"]
+
+    def test_network_success_requires_valid_report_and_zero_reaped_exit(self):
+        raw = json.dumps(self.network_report()).encode()
+        network = self.exercise_network_proof(raw)
+        self.assertEqual(network["status"], "passed")
+        for code in (1, 7, -9):
+            network = self.exercise_network_proof(raw, code=code)
+            self.assertEqual(network["failure"], "child_failed_unknown")
+            self.assertEqual(network["command"]["returncode"], code)
+
+    def test_failed_probe_report_survives_nonzero_exit(self):
+        report = dict(
+            self.network_report(),
+            status="failed",
+            code="namespace_unchanged",
+            child_namespace=101,
+            interface_count=None,
+            loopback_count=None,
+            connect_errnos=[],
+        )
+        network = self.exercise_network_proof(json.dumps(report).encode(), code=1)
+        self.assertEqual(network["failure"], "probe_invariant_failed")
+        self.assertEqual(network["probe"], report)
+
+    def test_unclassified_child_and_report_failures_remain_distinct(self):
+        for raw, status in (
+            (b"", "network_report_missing"),
+            (b"private stderr", "network_report_invalid"),
+            (b"x" * 2049, "network_report_oversized"),
+        ):
+            for code in (0, 1):
+                network = self.exercise_network_proof(raw, code=code)
+                self.assertEqual(network["report_status"], status)
+                self.assertEqual(
+                    network["failure"],
+                    "child_failed_unknown" if code else "report_unavailable",
+                )
+                self.assertNotIn("probe", network)
+                self.assertNotIn("private", json.dumps(network))
+
+    def test_network_deadline_or_resource_error_cannot_be_masked_by_pass_report(self):
+        for failure in ("child_deadline", "disk_budget_exceeded", "child_output_bound"):
+            network = self.exercise_network_proof(
+                json.dumps(self.network_report()).encode(),
+                command_error=proof.ProofError(failure),
+            )
+            self.assertEqual(network["command_failure"], failure)
+            self.assertEqual(network["status"], "failed")
+
+    def test_network_launcher_error_records_errno_without_raw_message(self):
+        receipt = {}
+        with patch.object(
+            proof, "network_namespace_id", return_value=101
+        ), patch.object(
+            proof.subprocess,
+            "Popen",
+            side_effect=PermissionError(13, "private-launch-detail"),
+        ) as popen, patch(
+            "builtins.print"
+        ) as output, self.assertRaisesRegex(
+            proof.ProofError, "network_isolation_failed"
+        ):
+            proof.prove_network_isolation(Path(sys.executable), self.root, receipt)
+        self.assertEqual(
+            popen.call_args.args[0][:3], ["/usr/bin/unshare", "--net", "--"]
+        )
+        self.assertEqual(
+            receipt["network"]["command"],
+            {"state": "launch_failed", "returncode": None, "errno": 13},
+        )
+        self.assertEqual(receipt["network"]["failure"], "launch_failed")
+        self.assertNotIn("private", json.dumps(receipt))
+        output.assert_not_called()
+
+    def test_command_outcome_collects_exit_without_echoing_stderr(self):
+        outcome = {}
+        with patch("builtins.print") as output, self.assertRaisesRegex(
+            proof.ProofError, "child_exit_7"
+        ):
+            proof.command(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; print('private stderr', file=sys.stderr); sys.exit(7)",
+                ],
+                root=self.root,
+                timeout=5,
+                outcome=outcome,
+            )
+        self.assertEqual(outcome, {"state": "reaped", "returncode": 7})
+        output.assert_not_called()
+
+    def test_missing_parent_identity_blocks_launch_and_retains_safe_failure(self):
+        receipt = {}
+        with patch.object(
+            proof, "network_namespace_id", side_effect=OSError(2, "private-path")
+        ), patch.object(proof, "command") as launch, self.assertRaisesRegex(
+            proof.ProofError, "network_isolation_failed"
+        ):
+            proof.prove_network_isolation(Path(sys.executable), self.root, receipt)
+        launch.assert_not_called()
+        self.assertEqual(receipt["network"]["failure"], "parent_namespace_unavailable")
+        self.assertEqual(receipt["network"]["errno"], 2)
+        self.assertEqual(
+            json.loads((self.root / "receipts/worker.json").read_text()), receipt
+        )
+
+    def test_unknown_probe_exception_is_not_promoted_to_permission_failure(self):
+        output = io.StringIO()
+        with patch(
+            "os.readlink", side_effect=RuntimeError("private error")
+        ), patch.object(sys, "argv", ["-c", "101"]), redirect_stdout(
+            output
+        ), self.assertRaises(
+            SystemExit
+        ):
+            exec(proof.NETWORK_PROBE, {})
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["code"], "unexpected_probe_error")
+        self.assertIsNone(report["errno"])
+        self.assertNotIn("private", output.getvalue())
+
+    def test_network_unknown_start_failure_remains_unknown(self):
+        receipt = {}
+        with patch.object(
+            proof, "network_namespace_id", return_value=101
+        ), patch.object(
+            proof.subprocess, "Popen", side_effect=RuntimeError("private launch detail")
+        ), self.assertRaisesRegex(
+            proof.ProofError, "network_isolation_failed"
+        ):
+            proof.prove_network_isolation(Path(sys.executable), self.root, receipt)
+        network = receipt["network"]
+        self.assertEqual(network["failure"], "child_failed_unknown")
+        self.assertEqual(network["command"]["state"], "not_started")
+        self.assertIsNone(network["command"]["returncode"])
+        self.assertIsNone(network["command"]["errno"])
+        self.assertNotIn("private", json.dumps(network))
+
+    def test_command_timeout_outcome_still_kills_and_reaps_child(self):
+        outcome = {}
+        with self.assertRaisesRegex(proof.ProofError, "child_deadline"):
+            proof.command(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                root=self.root,
+                timeout=0.1,
+                outcome=outcome,
+            )
+        self.assertEqual(outcome["state"], "reaped")
+        self.assertLess(outcome["returncode"], 0)
+
+    def test_worker_preserves_network_failure_through_cleanup_without_seed(self):
+        # Emulate Linux inputs only; do not start namespaces, packages or systemd.
+        requirements = (REPOSITORY / "requirements.txt").read_text()
+        memory = proof.memory_snapshot(self.root)
+        owner = os.geteuid()
+        original_read, original_resolve = Path.read_text, Path.resolve
+        failed = dict(
+            self.network_report(),
+            status="failed",
+            code="namespace_unchanged",
+            child_namespace=101,
+        )
+        for raw, code, classification in (
+            (json.dumps(failed), 1, "probe_invariant_failed"),
+            ("", 1, "child_failed_unknown"),
+            ("private stderr", 0, "report_unavailable"),
+            (json.dumps(self.network_report()), 7, "child_failed_unknown"),
+        ):
+            with self.subTest(
+                classification=classification
+            ), tempfile.TemporaryDirectory(
+                prefix=proof.ROOT_PREFIX, dir="/tmp"
+            ) as temporary:
+                root = Path(temporary)
+                root.rmdir()
+
+                def read(path, *args, **kwargs):
+                    if path == Path("/proc/self/cgroup"):
+                        return "0::/" + proof.ROOT_PREFIX + "fixture"
+                    if path.name == "memory.max":
+                        return str(proof.MEMORY_LIMIT - proof.CONTROL_ALLOWANCE)
+                    if path.name == "memory.swap.max":
+                        return "0"
+                    return original_read(path, *args, **kwargs)
+
+                def resolve(path, *args, **kwargs):
+                    return (
+                        path
+                        if path == root
+                        else original_resolve(path, *args, **kwargs)
+                    )
+
+                def launch(args, **kwargs):
+                    if args[0] == "/usr/bin/git":
+                        return requirements
+                    if proof.NETWORK_PROBE in args:
+                        self.assertEqual(kwargs["timeout"], 10)
+                        self.assertTrue(kwargs["offline"])
+                        kwargs["outcome"].update(state="reaped", returncode=code)
+                        (root / "workspace/command.log").write_text(raw)
+                        if code:
+                            raise proof.ProofError("child_exit_" + str(code))
+                        return None
+                    self.assertNotIn("venv", args)
+                    self.assertNotIn("install", args)
+                    return json.dumps("26.2.1")
+
+                def metadata(_, __, receipt, ___):
+                    receipt["wheel_files"] = []
+                    return "fixture"
+
+                meter = MagicMock()
+                meter.finish.return_value = {}
+                with patch.object(proof.sys, "platform", "linux"), patch.object(
+                    proof.os, "geteuid", side_effect=[0, owner]
+                ), patch.object(Path, "resolve", resolve), patch.object(
+                    Path, "read_text", read
+                ), patch.object(
+                    proof, "Meter", return_value=meter
+                ), patch.object(
+                    proof, "verify_base", return_value={}
+                ), patch.object(
+                    proof, "memory_snapshot", return_value=memory
+                ), patch.object(
+                    proof, "wait_for_owned_writers"
+                ), patch.object(
+                    proof, "network_namespace_id", return_value=101
+                ), patch.object(
+                    proof, "command", side_effect=launch
+                ) as commands, patch.object(
+                    proof, "diagnose_wheels", side_effect=metadata
+                ), patch.object(
+                    proof.artifact,
+                    "unpack_bundle",
+                    return_value=({"wheels": []}, "a" * 64),
+                ), patch.dict(
+                    os.environ,
+                    {
+                        "GH_ARTIFACT_TOKEN": "fixture",
+                        "ARTIFACT_REPOSITORY": "owner/repo",
+                        "ARTIFACT_ID": "1",
+                        "ARTIFACT_DIGEST": "a" * 64,
+                        "GITHUB_RUN_ID": "1",
+                        "GITHUB_RUN_ATTEMPT": "1",
+                        "GITHUB_SHA": "b" * 40,
+                    },
+                ), self.assertRaisesRegex(
+                    proof.ProofError, "network_isolation_failed"
+                ):
+                    proof.worker(root, Path(sys.executable), REPOSITORY, "b" * 40)
+                saved = json.loads((root / "receipts/worker.json").read_text())
+                self.assertEqual(saved["status"], "failed")
+                self.assertEqual(saved["network"]["failure"], classification)
+                self.assertEqual(saved["network"]["command"]["returncode"], code)
+                self.assertEqual(
+                    saved["cleanup"], "owned_incomplete_paths_removed_receipts_retained"
+                )
+                self.assertFalse((root / "workspace").exists())
+                self.assertFalse((root / "envs").exists())
+                self.assertNotIn("private", json.dumps(saved))
+                self.assertEqual(commands.call_args.args[0][-2], proof.NETWORK_PROBE)
+                stages = [call.args[0] for call in meter.begin.call_args_list]
+                self.assertNotIn("final_path_seed", stages)
+                self.assertNotIn("offline_install", stages)
 
     def test_consumer_allowance_is_inside_128_not_extra(self):
         cap = proof.MEMORY_LIMIT - proof.CONTROL_ALLOWANCE
