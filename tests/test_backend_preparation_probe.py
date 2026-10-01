@@ -1,13 +1,17 @@
 """Portable stdlib tests only; real installs are confined to the isolated CI job."""
 
 import json
+import io
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import stat
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+from types import SimpleNamespace
+import urllib.error
 import zipfile
 
 from scripts.backend_release import preparation_probe as proof
@@ -454,6 +458,505 @@ class PreparationCheckpointTests(unittest.TestCase):
             ),
         }
         self.assertLess(len(json.dumps(receipt, indent=2).encode()), 60000)
+
+    def bundle_fixture(self):
+        expected = {}
+        for index in range(73):
+            name = "p" + str(index)
+            expected[name] = "1.0"
+            self.wheel(
+                name + "-1.0-py3-none-any.whl",
+                name=name,
+                member=name + "-1.0.dist-info/METADATA",
+            )
+        files, _ = proof.hashed_requirements(self.root / "wheels", expected)
+        base = {
+            "version": "3.13.14",
+            "implementation": "cpython",
+            "free_threaded": False,
+            "soabi": "cpython-313-x86_64-linux-gnu",
+            "system": "Linux",
+            "architecture": "x86_64",
+            "libc": ["glibc", "2.39"],
+            "seed_version": "26.1.2",
+            "seed_sha256": "c" * 64,
+            "pip_version": "26.2.1",
+            "executable": "/producer/python",
+            "binary_sha256": "b" * 64,
+        }
+        manifest = {
+            "schema": 1,
+            "source_sha": "a" * 40,
+            "requirements_sha256": "d" * 64,
+            "run_id": "12",
+            "attempt": "1",
+            "producer": base,
+            "wheels": files,
+        }
+        bundle = proof.artifact.create_bundle(self.root / "wheels", manifest)
+        for file in files:
+            (self.root / "wheels" / file["filename"]).unlink()
+        return bundle, manifest, expected
+
+    def unpack(self, manifest, **overrides):
+        args = dict(
+            source_sha="a" * 40,
+            requirements_sha="d" * 64,
+            run_id="12",
+            attempt="1",
+            base=manifest["producer"],
+        )
+        args.update(overrides)
+        return proof.artifact.unpack_bundle(self.root / "wheels", **args)
+
+    def test_bundle_binds_complete_inventory_but_not_producer_binary_path(self):
+        _, manifest, expected = self.bundle_fixture()
+        consumer = dict(
+            manifest["producer"],
+            executable="/consumer/python",
+            binary_sha256="f" * 64,
+            pip_version="different-base-tool",
+        )
+        actual, checksum = self.unpack(manifest, base=consumer)
+        self.assertEqual(actual, manifest)
+        self.assertEqual(len(checksum), 64)
+        files, _ = proof.hashed_requirements(self.root / "wheels", expected)
+        self.assertEqual(files, manifest["wheels"])
+
+    def test_bundle_refuses_wrong_source_requirements_run_attempt_and_abi(self):
+        _, manifest, _ = self.bundle_fixture()
+        for overrides in (
+            dict(source_sha="b" * 40),
+            dict(requirements_sha="e" * 64),
+            dict(run_id="13"),
+            dict(attempt="2"),
+            dict(base=dict(manifest["producer"], architecture="arm64")),
+        ):
+            with self.subTest(overrides=overrides), self.assertRaises(
+                proof.artifact.ArtifactError
+            ):
+                self.unpack(manifest, **overrides)
+        self.assertEqual(len(list((self.root / "wheels").iterdir())), 1)
+
+    def test_missing_corrupt_wheel_and_unknown_archive_member_refuse(self):
+        bundle, manifest, _ = self.bundle_fixture()
+        original = bundle.read_bytes()
+        for case in ("missing", "corrupt", "extra"):
+            with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(
+                bundle, "w"
+            ) as dest:
+                for index, entry in enumerate(source.infolist()):
+                    if case == "missing" and index == 1:
+                        continue
+                    data = source.read(entry)
+                    if case == "corrupt" and index == 1:
+                        data = data[:-1] + bytes([data[-1] ^ 1])
+                    dest.writestr(entry, data)
+                if case == "extra":
+                    dest.writestr("unexpected", "x")
+            with self.subTest(case=case), self.assertRaises(
+                proof.artifact.ArtifactError
+            ):
+                self.unpack(manifest)
+            for path in (self.root / "wheels").glob("*.whl"):
+                path.unlink()
+        self.assertFalse((self.root / "READY").exists())
+
+    def test_outer_archive_refuses_digest_escape_link_duplicate_and_expansion(self):
+        outer = self.root / "wheels/ingress.zip"
+        cases = [
+            ("../bundle.zip", 0, 1),
+            ("bundle.zip", stat.S_IFLNK | 0o777, 1),
+            ("bundle.zip", 0, 2),
+            ("other.zip", 0, 1),
+        ]
+        for name, mode, count in cases:
+            with zipfile.ZipFile(outer, "w") as archive:
+                for _ in range(count):
+                    entry = zipfile.ZipInfo(name)
+                    entry.external_attr = mode << 16
+                    if count == 2 and archive.infolist():
+                        with self.assertWarns(UserWarning):
+                            archive.writestr(entry, "x")
+                    else:
+                        archive.writestr(entry, "x")
+            with self.assertRaises(proof.artifact.ArtifactError):
+                proof.artifact.unpack_outer(outer, outer.parent, proof.sha256(outer))
+        with self.assertRaisesRegex(proof.artifact.ArtifactError, "artifact_digest"):
+            proof.artifact.unpack_outer(outer, outer.parent, "0" * 64)
+        with zipfile.ZipFile(outer, "w") as archive:
+            archive.writestr("bundle.zip", "xx")
+        with patch.object(proof.artifact, "ARCHIVE_LIMIT", 1), self.assertRaisesRegex(
+            proof.artifact.ArtifactError, "expanded_archive_bound"
+        ):
+            proof.artifact.unpack_outer(outer, outer.parent, proof.sha256(outer))
+
+    def test_manifest_duplicate_json_keys_are_refused(self):
+        with self.assertRaisesRegex(
+            proof.artifact.ArtifactError, "duplicate_manifest_key"
+        ):
+            proof.artifact.read_json(b'{"schema":1,"schema":1}')
+
+    def test_measured_receiver_authenticates_api_not_signed_storage(self):
+        bundle, _, _ = self.bundle_fixture()
+        data = io.BytesIO()
+        with zipfile.ZipFile(data, "w") as archive:
+            archive.write(bundle, "bundle.zip")
+        bundle.unlink()
+        raw = data.getvalue()
+        checksum = proof.hashlib.sha256(raw).hexdigest()
+        metadata = {
+            "id": 4,
+            "expired": False,
+            "workflow_run": {"id": 12, "head_sha": "a" * 40},
+            "digest": "sha256:" + checksum,
+            "size_in_bytes": len(raw),
+        }
+        redirect = urllib.error.HTTPError(
+            "not-logged",
+            302,
+            "redirect",
+            {
+                "Location": "https://example.blob.core.windows.net/artifact?private=signed"
+            },
+            None,
+        )
+        with patch.dict(
+            os.environ, {"GH_ARTIFACT_TOKEN": "fixture-ephemeral"}
+        ), patch.object(proof.artifact.urllib.request, "build_opener") as factory:
+            factory.return_value.open.side_effect = [
+                io.BytesIO(json.dumps(metadata).encode()),
+                redirect,
+                io.BytesIO(raw),
+            ]
+            proof.artifact.receive(
+                bundle.parent,
+                repository="owner/repo",
+                artifact_id="4",
+                expected_digest=checksum,
+                run_id="12",
+                source_sha="a" * 40,
+            )
+            requests = [
+                call.args[0] for call in factory.return_value.open.call_args_list
+            ]
+        self.assertEqual(
+            requests[0].get_header("Authorization"), "Bearer fixture-ephemeral"
+        )
+        self.assertEqual(
+            requests[1].get_header("Authorization"), "Bearer fixture-ephemeral"
+        )
+        self.assertIsNone(requests[2].get_header("Authorization"))
+        self.assertTrue(bundle.exists())
+        self.assertFalse((bundle.parent / "ingress.zip").exists())
+
+    def test_receiver_does_not_expose_url_or_credentials_on_failure(self):
+        with patch.dict(
+            os.environ, {"GH_ARTIFACT_TOKEN": "fixture-ephemeral"}
+        ), patch.object(proof.artifact.urllib.request, "build_opener") as factory:
+            factory.return_value.open.side_effect = RuntimeError(
+                "private=signed fixture-ephemeral"
+            )
+            with self.assertRaisesRegex(
+                proof.artifact.ArtifactError, "^artifact_receive_failed$"
+            ):
+                proof.artifact.receive(
+                    self.root / "wheels",
+                    repository="owner/repo",
+                    artifact_id="4",
+                    expected_digest="f" * 64,
+                    run_id="12",
+                    source_sha="a" * 40,
+                )
+
+    def test_receiver_refuses_wrong_run_expiry_digest_before_download(self):
+        valid = {
+            "id": 4,
+            "expired": False,
+            "workflow_run": {"id": 12, "head_sha": "a" * 40},
+            "digest": "sha256:" + "f" * 64,
+            "size_in_bytes": 1024,
+        }
+        for change in (
+            {"expired": True},
+            {"id": 5},
+            {"digest": "sha256:" + "e" * 64},
+            {"workflow_run": {"id": 13, "head_sha": "a" * 40}},
+            {"workflow_run": {"id": 12, "head_sha": "b" * 40}},
+            {"size_in_bytes": proof.artifact.ARCHIVE_LIMIT + 1},
+        ):
+            with patch.dict(os.environ, {"GH_ARTIFACT_TOKEN": "fixture"}), patch.object(
+                proof.artifact.urllib.request, "build_opener"
+            ) as factory:
+                factory.return_value.open.return_value = io.BytesIO(
+                    json.dumps(dict(valid, **change)).encode()
+                )
+                with self.assertRaisesRegex(
+                    proof.artifact.ArtifactError, "remote_artifact_identity"
+                ):
+                    proof.artifact.receive(
+                        self.root / "wheels",
+                        repository="owner/repo",
+                        artifact_id="4",
+                        expected_digest="f" * 64,
+                        run_id="12",
+                        source_sha="a" * 40,
+                    )
+                self.assertEqual(factory.return_value.open.call_count, 1)
+        self.assertEqual(list((self.root / "wheels").iterdir()), [])
+
+    def test_receiver_refuses_unreviewed_storage_redirect(self):
+        metadata = {
+            "id": 4,
+            "expired": False,
+            "workflow_run": {"id": 12, "head_sha": "a" * 40},
+            "digest": "sha256:" + "f" * 64,
+            "size_in_bytes": 1024,
+        }
+        for location in (
+            "http://example.blob.core.windows.net/x",
+            "https://unknown.invalid/x",
+            "https://user@example.blob.core.windows.net/x",
+        ):
+            with patch.dict(os.environ, {"GH_ARTIFACT_TOKEN": "fixture"}), patch.object(
+                proof.artifact.urllib.request, "build_opener"
+            ) as factory:
+                factory.return_value.open.side_effect = [
+                    io.BytesIO(json.dumps(metadata).encode()),
+                    urllib.error.HTTPError("", 302, "", {"Location": location}, None),
+                ]
+                with self.assertRaisesRegex(
+                    proof.artifact.ArtifactError, "artifact_redirect_host"
+                ):
+                    proof.artifact.receive(
+                        self.root / "wheels",
+                        repository="owner/repo",
+                        artifact_id="4",
+                        expected_digest="f" * 64,
+                        run_id="12",
+                        source_sha="a" * 40,
+                    )
+                self.assertEqual(factory.return_value.open.call_count, 2)
+
+    def test_namespace_failure_never_runs_install(self):
+        with patch.object(proof.subprocess, "Popen") as popen:
+            popen.side_effect = FileNotFoundError("namespace unavailable")
+            with self.assertRaises(FileNotFoundError):
+                proof.command(
+                    [sys.executable, "-c", "raise SystemExit(0)"],
+                    root=self.root,
+                    timeout=1,
+                    offline=True,
+                )
+        self.assertEqual(
+            popen.call_args.args[0][:3], ["/usr/bin/unshare", "--net", "--"]
+        )
+        self.assertFalse((self.root / "envs/candidate").exists())
+
+    def test_consumer_allowance_is_inside_128_not_extra(self):
+        cap = proof.MEMORY_LIMIT - proof.CONTROL_ALLOWANCE
+        self.assertEqual(cap, 96 * proof.MIB)
+        self.assertEqual(
+            proof.PRODUCER_MEMORY_LIMIT - proof.CONTROL_ALLOWANCE, 224 * proof.MIB
+        )
+        self.assertGreaterEqual(proof.CONTROL_ALLOWANCE, 21106688)
+        self.set_memory(peak=cap + 1)
+        meter = proof.Meter(self.root, self.root, memory_limit=cap)
+        with self.assertRaisesRegex(
+            proof.ProofError, "measured_memory_budget_exceeded"
+        ):
+            proof.enter_stage(self.root, {}, meter, "final_path_seed")
+
+    def test_producer_scratch_is_separately_bounded(self):
+        self.assertEqual(sum(proof.PRODUCER_DISK_LIMITS.values()), 512 * proof.MIB)
+        meter = proof.Meter(
+            self.root,
+            self.root,
+            memory_limit=224 * proof.MIB,
+            disk_limits=proof.PRODUCER_DISK_LIMITS,
+            total_limit=512 * proof.MIB,
+        )
+        with patch.object(
+            proof,
+            "allocated_tree",
+            return_value={"allocated_bytes": 513 * proof.MIB, "files": 1, "inodes": 1},
+        ):
+            with self.assertRaises(proof.ProofError):
+                meter.once()
+        self.assertEqual(proof.TOTAL_LIMIT, 1280 * proof.MIB)
+
+    def test_owned_writers_must_exit_before_cleanup(self):
+        procs = self.root / "cgroup.procs"
+        procs.write_text(f"{os.getpid()}\n987654321\n")
+        with self.assertRaisesRegex(proof.ProofError, "owned_writers_remain"):
+            proof.wait_for_owned_writers(self.root, timeout=0)
+        procs.write_text(f"{os.getpid()}\n")
+        proof.wait_for_owned_writers(self.root, timeout=0)
+
+    def test_cleanup_refuses_unknown_paths_without_deleting(self):
+        (self.root / "unexpected").write_text("preserve")
+        with self.assertRaisesRegex(proof.ProofError, "cleanup_unknown_path"):
+            proof.owned_cleanup(self.root, self.root.stat(), {})
+        self.assertTrue((self.root / "unexpected").exists())
+
+    def test_killed_writer_is_reaped_and_owned_partial_files_are_removed(self):
+        # Independent private root: fake cgroup files used by other tests are not fixture data.
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            root.chmod(0o700)
+            for name in proof.DISK_LIMITS:
+                (root / name).mkdir()
+            with self.assertRaisesRegex(proof.ProofError, "child_exit_-"):
+                proof.command(
+                    [
+                        sys.executable,
+                        "-c",
+                        "import os,signal,pathlib; "
+                        "pathlib.Path('workspace/partial').write_text('incomplete'); "
+                        "os.kill(os.getpid(), signal.SIGKILL)",
+                    ],
+                    root=root,
+                    timeout=5,
+                )
+            receipt = {}
+            proof.owned_cleanup(root, root.stat(), receipt)
+            self.assertEqual(
+                receipt["cleanup"], "owned_incomplete_paths_removed_receipts_retained"
+            )
+            self.assertEqual([p.name for p in root.iterdir()], ["receipts"])
+
+    def test_workflow_has_fresh_sequential_consumer_without_download_action(self):
+        workflow = (REPOSITORY / ".github/workflows/backend-ci.yml").read_text()
+        producer = workflow.split("  wheel-producer-proof:")[1].split(
+            "  offline-preparation-proof:"
+        )[0]
+        consumer = workflow.split("  offline-preparation-proof:")[1].split("  deploy:")[
+            0
+        ]
+        self.assertIn("needs: wheel-producer-proof", consumer)
+        self.assertIn("actions: read", consumer)
+        self.assertNotIn("download-artifact", consumer)
+        self.assertNotIn("secrets.", consumer + producer)
+        for section in (producer, consumer):
+            self.assertIn("runs-on: ubuntu-24.04", section)
+            self.assertIn("python-version: 3.13.14", section)
+            self.assertIn("timeout-minutes: 20", section)
+        self.assertIn("--role producer", producer)
+        self.assertIn("--role consumer", consumer)
+
+    def exercise_controller(self, *, timeout=False, cleanup_failure=False):
+        root = self.root / "observer-fixture"
+        root.mkdir(mode=0o700)
+        memory = proof.memory_snapshot(self.root)
+        proc = MagicMock()
+        proc.pid = 12345678
+        proc.poll.return_value = None if timeout else 0
+        proc.wait.side_effect = (
+            [subprocess.TimeoutExpired("fixture", 680), 0] if timeout else [0, 0]
+        )
+
+        def launch(args, **_):
+            root.mkdir(mode=0o700)
+            (root / "receipts").mkdir()
+            # Simulates already-saved live evidence, never a real Linux operation.
+            worker = dict(
+                memory,
+                status="offline_consumer_passed_not_release_ready",
+                cleanup="owned_incomplete_paths_removed_receipts_retained",
+            )
+            worker["memory.peak"] = 90 * proof.MIB
+            (root / "receipts/worker.json").write_text(json.dumps(worker))
+            (root / "receipts/resources.json").write_text(json.dumps(worker))
+            return proc
+
+        original_read = Path.read_text
+
+        def read(path, *args, **kwargs):
+            if path == Path("/etc/os-release"):
+                return 'VERSION_ID="24.04"'
+            return original_read(path, *args, **kwargs)
+
+        properties = dict(
+            LoadState="loaded",
+            MainPID="0",
+            ControlGroup="",
+            MemoryPeak="1024",
+            Result="success",
+        )
+        second = (
+            dict(properties, MainPID="987654321") if cleanup_failure else properties
+        )
+        with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), patch.object(
+            proof.sys, "platform", "linux"
+        ), patch.object(proof.os, "geteuid", return_value=0), patch.object(
+            proof.tempfile, "mkdtemp", return_value=str(root)
+        ), patch.object(
+            Path, "read_text", read
+        ), patch.object(
+            proof.subprocess, "Popen", side_effect=launch
+        ) as popen, patch.object(
+            proof.subprocess, "run"
+        ) as run, patch.object(
+            proof, "unit_properties", side_effect=[properties, second]
+        ), patch.object(
+            proof.os, "killpg"
+        ) as kill, patch.object(
+            proof.resource, "getrusage", return_value=SimpleNamespace(ru_maxrss=20612)
+        ), patch(
+            "builtins.print"
+        ):
+            if timeout or cleanup_failure:
+                with self.assertRaisesRegex(
+                    proof.ProofError, "capacity_checkpoint_failed"
+                ):
+                    proof.controller(
+                        Path(sys.executable), REPOSITORY, "a" * 40, self.root / "output"
+                    )
+            else:
+                proof.controller(
+                    Path(sys.executable), REPOSITORY, "a" * 40, self.root / "output"
+                )
+        return (
+            json.loads((self.root / "output/capacity.json").read_text()),
+            popen.call_args.args[0],
+            run,
+            kill,
+            proc,
+            root,
+        )
+
+    def test_successful_service_exit_has_no_active_exited_wait_deadlock(self):
+        receipt, args, run, kill, proc, _ = self.exercise_controller()
+        self.assertIn("--wait", args)
+        self.assertIn("--pipe", args)
+        self.assertIn("--property=Type=exec", args)
+        self.assertNotIn("--property=RemainAfterExit=yes", args)
+        self.assertNotIn("--property=Type=oneshot", args)
+        self.assertEqual(proc.wait.call_args_list[0].kwargs["timeout"], 680)
+        self.assertEqual(receipt["unit_returncode"], 0)
+        self.assertEqual(receipt["worker"]["memory.peak"], 90 * proof.MIB)
+        self.assertEqual(receipt["systemd"]["MemoryPeak"], "1024")
+        self.assertTrue(receipt["controls_within_allowance"])
+        kill.assert_not_called()
+        self.assertTrue(
+            any(
+                call.args[0][:2] == ["systemctl", "stop"] for call in run.call_args_list
+            )
+        )
+
+    def test_launcher_timeout_kills_owned_group_stops_unit_and_preserves_evidence(self):
+        receipt, _, _, kill, proc, root = self.exercise_controller(timeout=True)
+        self.assertEqual(receipt["controller_failure"], "TimeoutExpired")
+        kill.assert_called_once_with(proc.pid, proof.signal.SIGKILL)
+        self.assertEqual(proc.wait.call_count, 2)
+        self.assertTrue((root / "receipts/worker.json").exists())
+        self.assertFalse((root / "READY").exists())
+
+    def test_uncertain_unit_cleanup_never_sweeps_fixture(self):
+        receipt, _, _, _, _, root = self.exercise_controller(cleanup_failure=True)
+        self.assertEqual(receipt["cleanup"], "failed_fixture_preserved")
+        self.assertEqual(receipt["cleanup_failure"], "owned_processes_not_reaped")
+        self.assertTrue(root.exists())
 
 
 if __name__ == "__main__":

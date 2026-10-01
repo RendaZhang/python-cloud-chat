@@ -64,16 +64,16 @@ jobs:
       - name: Run pre-commit hooks
         run: pre-commit run --all-files
 
-  offline-preparation-proof:
-    name: Disposable offline preparation capacity checkpoint
+  wheel-producer-proof:
+    name: Disposable complete wheel producer
     if: >-
-      (github.event_name == 'workflow_dispatch' &&
-      github.ref == 'refs/heads/codex/phase-18-backend-release-foundation') ||
-      (github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.head_ref == 'codex/phase-18-backend-release-foundation')
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/codex/phase-18-backend-release-foundation'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      artifact-id: ${{ steps.wheels.outputs.artifact-id }}
+      artifact-digest: ${{ steps.wheels.outputs.artifact-digest }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -88,11 +88,73 @@ jobs:
       - name: Check OS Python helper compatibility
         run: /usr/bin/python3 -B -m unittest tests.test_backend_preparation_probe
 
-      - name: Measure isolated preparation without changing budgets
+      - name: Measure bounded complete wheel preparation
+        id: prepare
         run: |
           set -euo pipefail
-          sudo --preserve-env=GITHUB_ACTIONS /usr/bin/python3 -B \
+          sudo --preserve-env=GITHUB_ACTIONS,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_OUTPUT /usr/bin/python3 -B \
             scripts/backend_release/preparation_probe.py controller \
+            --role producer \
+            --base "$pythonLocation/bin/python3.13" \
+            --repository "$GITHUB_WORKSPACE" --sha "$GITHUB_SHA" \
+            --output "$RUNNER_TEMP/backend-preparation-receipts"
+
+      # CI-only publication relay, not target ingress or part of the measured service.
+      - name: Publish same-run wheel bundle
+        id: wheels
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-wheels-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ steps.prepare.outputs.bundle }}
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Retain sanitized capacity receipt
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-producer-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/backend-preparation-receipts/*.json
+          if-no-files-found: error
+          retention-days: 7
+
+  offline-preparation-proof:
+    name: Fresh consumer measured ingress and offline installation
+    needs: wheel-producer-proof
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/codex/phase-18-backend-release-foundation'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up independent read-only base Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: 3.13.14
+
+      - name: Check OS Python helper compatibility
+        run: /usr/bin/python3 -B -m unittest tests.test_backend_preparation_probe
+
+      - name: Receive within the measured consumer and install offline
+        env:
+          GH_ARTIFACT_TOKEN: ${{ github.token }}
+          ARTIFACT_REPOSITORY: ${{ github.repository }}
+          ARTIFACT_ID: ${{ needs.wheel-producer-proof.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ needs.wheel-producer-proof.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          sudo --preserve-env=GITHUB_ACTIONS,GITHUB_RUN_ID,GITHUB_RUN_ATTEMPT,GITHUB_SHA,GH_ARTIFACT_TOKEN,ARTIFACT_REPOSITORY,ARTIFACT_ID,ARTIFACT_DIGEST /usr/bin/python3 -B \
+            scripts/backend_release/preparation_probe.py controller \
+            --role consumer \
             --base "$pythonLocation/bin/python3.13" \
             --repository "$GITHUB_WORKSPACE" --sha "$GITHUB_SHA" \
             --output "$RUNNER_TEMP/backend-preparation-receipts"
@@ -101,7 +163,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: backend-preparation-${{ github.sha }}-${{ github.run_attempt }}
+          name: backend-consumer-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/backend-preparation-receipts/*.json
           if-no-files-found: error
           retention-days: 7

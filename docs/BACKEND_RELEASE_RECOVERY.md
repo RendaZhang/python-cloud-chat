@@ -197,39 +197,81 @@ unmeasured; fixture lock timings are not a service recovery guarantee.
 
 ### Offline Preparation Capacity Checkpoint
 
-The feature-only `offline-preparation-proof` CI job is an early feasibility gate,
-not a release builder or completion of immutable preparation. It runs on disposable
-Ubuntu 24.04 with the read-only setup-python CPython 3.13.14 binary. The OS Python
-stdlib helper validates its real path, binary digest, ABI/platform and bundled
-ensurepip seed separately from the private writable temporary fixture. It neither
-copies the interpreter nor changes the existing pure environment declarations.
+The prepared split is a feasibility experiment, not a release builder. The manual
+owned-feature dispatch has two sequential disposable Ubuntu 24.04 jobs, each with
+an independent read-only setup-python CPython 3.13.14 input. The producer performs
+normal pip binary-only resolution of all 73 unchanged pins; the fresh consumer
+receives the artifact before a genuinely offline final-path installation. Local
+portable tests do not exercise either Linux job. No new capacity result is claimed.
 
-One owned transient preparation unit contains the helper, sampler, resolver, venv
-seed, installer and verification descendants with `memory.max=128 MiB` and
-zero swap. The kernel can temporarily exceed `memory.max`; configured containment
-and zero OOM events do not prove a measured 128 MiB envelope. CI setup/quality tooling
-and the external test supervisor are separate infrastructure, not evidence of
-target-host preparation. The receipt separately
-reports the external supervisor and its serial control-child RSS high-water;
-the worker cgroup peak alone is not a complete production admission claim.
-Tracked requirements reading and helper copying occur inside the bounded worker.
-Binary-only download uses
-all 73 unchanged exact pins. Installation uses a final absolute fixture path,
-verified local wheel hashes and a separate network namespace with no external
-interfaces; pip check and native imports run there too. No app import or service
-connection is allowed. Download/install deadlines are 300/180 seconds; the owned
-unit has a 650-second maximum and the CI job a 20-minute deadline.
+`preparation_probe.py` owns the experiment and `preparation_artifact.py` owns its
+bounded transport. Each role verifies its own base binary/path/ABI and ensurepip
+seed; sharing compatible wheels does not require equal producer/consumer binary
+digests or paths. No base copy, relocated venv or change to the pure contracts/store.
 
-The small JSON receipt records stage, success/failure, cgroup memory peak/events,
-100 ms sampled allocated disk/inode/file high-water, fixed component budgets and
-owned-process/fixture cleanup. Each of the eight fixed stage names can occur once.
-Stage evidence includes elapsed duration, sample count, start/latest `memory.current`,
-cumulative `memory.peak`/events, keyed `memory.stat`, sampled current high-water
-with its sampled stat breakdown, and disk/file/inode high-water. Stage `ended` means
-measurement ended, not that the operation passed. Peaks and events remain cumulative
-since cgroup creation, not exclusive per-stage peaks or simultaneous atomic snapshots.
-The sampler never resets peaks, subtracts cache charges or replaces live evidence with
-a smaller post-exit systemd value. Missing required metrics fail closed.
+The producer's approved experimental preparation budget is 256 MiB/no swap and
+512 MiB scratch (256 wheels/transfer + 128 workspace + 64 cache + 64 metadata).
+The consumer keeps 128 MiB/no swap, with the separate proposed 128 MiB host reserve
+unchanged. Within those totals, reserve **32 MiB** for serial external systemd-run /
+systemctl child RSS and cap the measured service at **224 / 96 MiB** respectively.
+The previous control-child measurement was 21,106,688 bytes; fork/exec may include
+inherited Python RSS. Do not subtract it or assume an 8 MiB allowance would pass.
+The new partition is unmeasured, not an assertion that either installer fits.
+The serial child RSS gate must pass independently; it is a conservative separate
+high-water, not a simultaneous aggregate measurement or a cgroup hard bound.
+
+The service contains actual preparation control, sampler, receiver/TLS, hashing,
+extraction, base reads, seed/install/check/native children and charged file cache.
+The outside Python observer only launches/stops the owned unit and collects CI
+evidence; its RSS is separately reported. CI setup/quality, runner/system manager
+baseline and artifact upload relay are not inside the service. Their aggregate
+memory is not measured or claimed bounded. A future target launch adapter, shared
+kernel/cache costs and fresh host admission remain unproved; this is not production
+aggregate acceptance. Unknown cleanup ownership refuses and preserves the fixture.
+
+The producer builds one bounded ZIP and an exact 73-wheel manifest, then the
+existing upload-artifact action publishes it as a CI-only relay (one-day retention).
+The consumer does **not** use download-artifact or a pre-staged copy. A measured
+stdlib child uses the same-run artifact ID/digest and ephemeral `actions: read`
+token, verifies REST metadata/run/SHA, follows one HTTPS storage redirect without
+forwarding Authorization, streams at most 128 MiB, checks the outer hash and safely
+unwraps it. It never logs token values, signed URLs or server error bodies. Changed
+storage hosts, expired/missing artifacts, corrupt bytes or unexpected members fail
+closed; no persistent credentials or deployment secrets are involved.
+See [GitHub artifact downloads](https://docs.github.com/en/rest/actions/artifacts#download-an-artifact).
+
+The inner manifest binds source, requirements, run/attempt, producer tool/runtime/
+platform/seed and every filename/root-metadata identity/size/hash. The consumer
+independently rehashes and reparses all wheels. Archive links, path escapes,
+duplicates, unexpected members and expansion bounds refuse before installation.
+Hashes are integrity checks, not independent publisher authentication. All 73
+hash-pinned entries are explicit; `--no-deps` suppresses traversal only, not closure
+validation. Full producer resolution, exact installed inventory plus bundled pip,
+pip check and existing native imports remain required. Real network namespaces cover
+seed, install, pip check and native validation; no application import is allowed.
+See [pip download](https://pip.pypa.io/en/stable/cli/pip_download/) and
+[pip hash checking](https://pip.pypa.io/en/stable/topics/secure-installs/).
+
+Deadlines remain download 300s, ingress 120s, base/network 10s each, seed 60s,
+install 180s, pip-check/native 30s each, unit 650s/stop 10s and each job 20 minutes.
+The small JSON receipts retain cumulative current/peak/events/keyed memory.stat,
+per-stage time, actual sampling gaps and sampled allocated bytes/files/inodes.
+Stage ended does not mean passed. Never reset peaks, subtract cache, or replace a
+larger live measurement with a smaller post-exit value. Zero OOM is not enough.
+The finite `Type=exec` service saves/fsyncs live receipts, checks for remaining
+owned writers, removes its known incomplete paths and saves a final live snapshot
+before returning. It does not use `RemainAfterExit`; the waiting launcher can finish
+on normal exit. The CI observer then checks/stops the owned unit and proves no owned
+processes remain. Timeout kills/reaps the launcher and stops the unit; uncertain
+cleanup preserves the fixture. Separate post-exit observations never replace live
+peaks. Portable tests cover this ordering but are not a Linux systemd run.
+
+Each name in the probe's `STAGES` allowlist can occur once per role. Producer stages
+include packaging; consumer stages include ingress and artifact verification. Missing
+stages are not executed, not implicitly successful. Nominal 100 ms sampling also
+records actual gaps, sample counts, start/latest readings and the stat breakdown at
+sampled current high-water. These are not exclusive per-stage peaks or simultaneous
+atomic snapshots. Missing required metrics fail closed.
 
 The bounded diagnostic pass selects one root distribution `.dist-info/METADATA`,
 not nested vendored metadata. It retains the 1 MiB metadata bound and rejects missing,
@@ -242,23 +284,30 @@ checkpoint validator, not a complete immutable archive validator.
 
 After binary download, metadata diagnosis is retained before the measured resource
 gate, so an archive defect and memory pressure can be distinguished. Any observed
-current/peak above 128 MiB, swap usage or OOM event fails explicitly before seed/install;
+current/peak above the role's service partition, swap usage or OOM fails before seed/install;
 the remaining stages cannot proceed. Limits are also checked at later stage boundaries
 and finalization. Diagnosis is not permission to raise a budget or change a pin.
-The first checkpoint failed before install; neither its partial download nor this
-diagnostic correction establishes offline installation or capacity acceptance.
+Both previous checkpoints failed before install; neither their partial download nor
+this unexecuted split establishes offline installation or capacity acceptance.
 See the [wheel specification](https://packaging.python.org/en/latest/specifications/binary-distribution-format/)
 and [cgroup v2 memory semantics](https://docs.kernel.org/admin-guide/cgroup-v2.html).
 
-Disk samples are not quotas. A failed receipt fails
-the job; it must not be relabeled successful or retried with increased limits.
-No wheels or environments are uploaded or committed. The first checkpoint has no
-protected environments; its receipt explicitly records that limitation. Immutable
-publication, reuse, two protected environments, comprehensive artifact/fault tests
-and production capacity remain unproved even if this early checkpoint passes.
+Disk samples are not quotas. Archive/expanded copies share the existing wheel slot;
+the outer ZIP is removed before inner expansion, never after granting extra space.
+The consumer keeps the original 1280 MiB total and component budgets, with zero
+protected environments explicitly disclosed. Actual two-environment occupancy,
+third-distinct refusal under load, reuse, immutable publication and production
+capacity remain later gates. No installed environment is uploaded or retained as a
+portable artifact. A missing wheel artifact refuses new preparation, not a fallback
+online install or change to accepted rollback environments.
+Failure stops/reaps owned writers before verified incomplete-path removal. Unknown
+ownership or a killed owner preserves evidence rather than sweeping from the
+external observer. Public producer bundle and bounded sanitized receipts remain
+for CI relay/runner disposal; receipts retain seven days, not a recovery promise.
+Any failure fails the job; no automatic tuning retry or increased limits.
 
 The existing quality and production deployment jobs are unchanged. The proof runs
-only for the owned feature dispatch or a same-repository PR from that feature;
+only for the owned feature's manual dispatch;
 master dispatch cannot run it and feature dispatch cannot deploy. Root planning
 documents and production access remain outside this checkpoint.
 

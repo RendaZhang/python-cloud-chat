@@ -63,19 +63,25 @@ venv/bin/python -m unittest discover -s tests -p 'test_backend_release_*.py'
 venv/bin/python -m unittest tests.test_backend_preparation_probe
 ```
 
-The feature-only offline-preparation capacity checkpoint also runs its portable
-stdlib tests under Ubuntu's OS Python. Actual wheel downloads, final-path installs,
-network namespaces and preparation cgroup measurements run only on the disposable
-Linux proof job, never as part of local unittest discovery. Inspect its sanitized
-capacity receipt and cleanup result; a green quality job alone does not prove the
-offline checkpoint or immutable release preparation. See the recovery contract's
-capacity-checkpoint section for the unchanged budgets and outstanding gates.
+The feature-only split-preparation checkpoint also runs its portable stdlib tests
+under Ubuntu's OS Python. Real full-graph wheel download occurs in a disposable
+producer; a fresh consumer downloads the same-run artifact inside its measured
+service, then installs at the final path with actual network isolation. Neither
+online downloads nor Linux cgroup/namespace operations run in local unittest
+discovery. Inspect both sanitized receipts and cleanup results; quality success
+alone does not prove offline preparation. See the recovery contract's checkpoint
+section for the approved experimental producer budget, consumer/control partition,
+explicit unmeasured CI observer/relay costs and outstanding host gates.
 Portable regressions distinguish root wheel metadata from vendored copies, retain
 identity/duplicate/size refusals, and prove an over-budget peak with zero OOM events
 still blocks seed/install after saving metadata diagnostics. Inspect per-stage keyed
 memory/stat/event, elapsed-time and sampled-disk evidence separately from the external
-supervisor cost. Neither cumulative peaks nor sampled disk values are hard admission
-guarantees. This diagnostic revision leaves the workflow and production jobs unchanged.
+observer cost. Portable tests also cover missing/corrupt/mismatched artifacts,
+unsafe archive members, API-only token forwarding, namespace failure, control
+allowance, killed-writer collection and uncertain cleanup refusal. Neither cumulative
+peaks nor sampled disk values are host admission guarantees. The two proof-only jobs
+are manually dispatched on the owned feature only; quality/deploy jobs are unchanged.
+This local implementation has not yet run its split Linux experiment.
 
 后端 GitHub Actions 在 Pull Request、推送到 `master` 与手动触发时使用 Python 3.13.14，
 安装已提交的 `requirements.txt`，并依次执行以下仓库级门禁：

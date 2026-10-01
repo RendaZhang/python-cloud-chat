@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,10 @@ from email.parser import BytesParser
 
 MIB = 1024 * 1024
 MEMORY_LIMIT = 128 * MIB
+PRODUCER_MEMORY_LIMIT = 256 * MIB
+# Previous serial control-child ru_maxrss was 21,106,688 bytes and can include
+# inherited pre-exec Python RSS. Reserve it honestly; do not subtract that cost.
+CONTROL_ALLOWANCE = 32 * MIB
 DISK_LIMITS = {
     "envs": 384 * MIB,
     "wheels": 256 * MIB,
@@ -28,17 +33,30 @@ DISK_LIMITS = {
     "receipts": 64 * MIB,
 }
 TOTAL_LIMIT = 1280 * MIB
+PRODUCER_DISK_LIMITS = {
+    key: value for key, value in DISK_LIMITS.items() if key != "envs"
+}
+PRODUCER_TOTAL_LIMIT = 512 * MIB
 ROOT_PREFIX = "backend-offline-proof-"
 STAGES = (
     "tracked_inputs",
     "interpreter",
     "binary_download",
     "wheel_metadata",
+    "artifact_packaging",
+    "artifact_ingress",
+    "artifact_verification",
     "network_isolation",
     "final_path_seed",
     "offline_install",
     "offline_verification",
 )
+
+_spec = importlib.util.spec_from_file_location(
+    "preparation_artifact", Path(__file__).with_name("preparation_artifact.py")
+)
+artifact = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(artifact)
 EVENT_KEYS = ("low", "high", "max", "oom", "oom_kill", "oom_group_kill")
 STAT_KEYS = (
     "anon",
@@ -217,7 +235,7 @@ def hashed_requirements(wheel_directory, expected, diagnostics=None):
     return manifest, "\n".join(lines) + "\n"
 
 
-def command(args, *, root, timeout, offline=False, capture=False):
+def command(args, *, root, timeout, offline=False, capture=False, extra_env=None):
     if offline:
         args = ["/usr/bin/unshare", "--net", "--", *args]
     log = root / "workspace/command.log"
@@ -225,7 +243,7 @@ def command(args, *, root, timeout, offline=False, capture=False):
         proc = subprocess.Popen(
             args,
             cwd=root,
-            env=clean_environment(root),
+            env={**clean_environment(root), **(extra_env or {})},
             stdin=subprocess.DEVNULL,
             stdout=output,
             stderr=subprocess.STDOUT,
@@ -302,8 +320,16 @@ modules = ('gevent', 'greenlet', '_cffi_backend', 'cryptography.hazmat.bindings.
 for module in modules:
     importlib.import_module(module)
 assert 'app' not in sys.modules and 'app_auth' not in sys.modules
+config = (pathlib.Path(sys.prefix) / 'pyvenv.cfg').read_text()
+assert 'include-system-site-packages = false' in config.splitlines()
+entrypoints = {}
+for name in ('pip', 'gunicorn'):
+    with (pathlib.Path(sys.prefix) / 'bin' / name).open() as stream:
+        entrypoints[name] = stream.readline(512).strip()
+    assert entrypoints[name] == '#!' + sys.executable
 print(json.dumps({'packages': names, 'native_imports': list(modules),
- 'prefix': sys.prefix, 'base_executable': str(pathlib.Path(sys._base_executable).resolve())}))
+ 'prefix': sys.prefix, 'base_prefix': sys.base_prefix, 'entrypoints': entrypoints,
+ 'base_executable': str(pathlib.Path(sys._base_executable).resolve())}))
 """
 
 
@@ -375,9 +401,9 @@ def memory_snapshot(cgroup):
     return result
 
 
-def memory_failures(memory):
+def memory_failures(memory, limit=MEMORY_LIMIT):
     failures = set()
-    if memory["memory.peak"] > MEMORY_LIMIT or memory["memory.current"] > MEMORY_LIMIT:
+    if memory["memory.peak"] > limit or memory["memory.current"] > limit:
         failures.add("measured_memory_budget_exceeded")
     if memory["memory.swap.peak"] != 0:
         failures.add("measured_swap_budget_exceeded")
@@ -389,9 +415,30 @@ def memory_failures(memory):
     return failures
 
 
+def wait_for_owned_writers(cgroup, *, timeout=10):
+    deadline = time.monotonic() + timeout
+    while True:
+        pids = (cgroup / "cgroup.procs").read_text().split()
+        if pids == [str(os.getpid())]:
+            return
+        require(time.monotonic() < deadline, "owned_writers_remain")
+        time.sleep(0.05)
+
+
 class Meter:
-    def __init__(self, root, cgroup):
+    def __init__(
+        self,
+        root,
+        cgroup,
+        *,
+        memory_limit=MEMORY_LIMIT,
+        disk_limits=None,
+        total_limit=TOTAL_LIMIT,
+    ):
         self.root, self.cgroup = root, cgroup
+        self.memory_limit = memory_limit
+        self.disk_limits = DISK_LIMITS if disk_limits is None else disk_limits
+        self.total_limit = total_limit
         self.stop = threading.Event()
         self.lock = threading.Lock()
         self.high_water = {}
@@ -408,7 +455,9 @@ class Meter:
 
     def once(self):
         with self.lock:
-            usage = {name: allocated_tree(self.root / name) for name in DISK_LIMITS}
+            usage = {
+                name: allocated_tree(self.root / name) for name in self.disk_limits
+            }
             usage["total"] = allocated_tree(self.root)
             memory = memory_snapshot(self.cgroup)
             now = time.monotonic()
@@ -418,7 +467,7 @@ class Meter:
             self.previous_sample = now
             self.samples += 1
             self.update_high_water(self.high_water, usage)
-            self.resource_failures.update(memory_failures(memory))
+            self.resource_failures.update(memory_failures(memory, self.memory_limit))
             if self.stage is not None:
                 stage = self.stages[self.stage]
                 stage.setdefault("memory_start", memory)
@@ -445,7 +494,7 @@ class Meter:
             require(len(raw.encode()) <= 65536, "resource_receipt_bound")
             pending.write_text(raw)
             os.replace(pending, self.root / "receipts/resources.json")
-        for name, limit in {**DISK_LIMITS, "total": TOTAL_LIMIT}.items():
+        for name, limit in {**self.disk_limits, "total": self.total_limit}.items():
             require(usage[name]["allocated_bytes"] <= limit, "disk_budget_" + name)
 
     @staticmethod
@@ -539,7 +588,7 @@ def diagnose_wheels(root, expected, receipt, meter):
     return hashed
 
 
-def worker(root, base, repository, target_sha):
+def worker(root, base, repository, target_sha, role="consumer"):
     require(
         sys.platform == "linux" and os.geteuid() == 0, "disposable_linux_root_required"
     )
@@ -547,19 +596,45 @@ def worker(root, base, repository, target_sha):
         root.parent == Path("/tmp") and root.name.startswith(ROOT_PREFIX),
         "fixture_root",
     )
-    require(
-        root == root.resolve() and stat.S_IMODE(root.stat().st_mode) == 0o700,
-        "private_root",
-    )
+    root.mkdir(mode=0o700)
+    identity = root.stat()
+    require(root == root.resolve(), "private_root")
+    disk_limits = PRODUCER_DISK_LIMITS if role == "producer" else DISK_LIMITS
+    total_limit = PRODUCER_TOTAL_LIMIT if role == "producer" else TOTAL_LIMIT
+    aggregate = PRODUCER_MEMORY_LIMIT if role == "producer" else MEMORY_LIMIT
+    service_limit = aggregate - CONTROL_ALLOWANCE
+    for name in disk_limits:
+        (root / name).mkdir(mode=0o700)
+    for name in ("home", "tmp"):
+        (root / "workspace" / name).mkdir(mode=0o700)
     relative = Path("/proc/self/cgroup").read_text().strip().split("::", 1)[1]
     require(ROOT_PREFIX in relative, "owned_cgroup_required")
     cgroup = Path("/sys/fs/cgroup") / relative.lstrip("/")
     require(
-        int((cgroup / "memory.max").read_text()) == MEMORY_LIMIT, "memory_limit_missing"
+        int((cgroup / "memory.max").read_text()) == service_limit,
+        "memory_limit_missing",
     )
     require(int((cgroup / "memory.swap.max").read_text()) == 0, "swap_limit_missing")
-    receipt = {"scope": "disposable-linux-capacity-checkpoint", "status": "running"}
-    meter = Meter(root, cgroup)
+    receipt = {
+        "scope": "disposable-linux-split-checkpoint",
+        "status": "running",
+        "role": role,
+        "source_sha": target_sha,
+        "protected_environment_count": 0,
+        "aggregate_budget": aggregate,
+        "service_memory_limit": service_limit,
+        "external_serial_control_allowance": CONTROL_ALLOWANCE,
+        "disk_limits": disk_limits,
+        "total_disk_limit": total_limit,
+        "cleanup": "pending",
+    }
+    meter = Meter(
+        root,
+        cgroup,
+        memory_limit=service_limit,
+        disk_limits=disk_limits,
+        total_limit=total_limit,
+    )
     meter.thread.start()
     try:
         enter_stage(root, receipt, meter, "tracked_inputs")
@@ -579,39 +654,110 @@ def worker(root, base, repository, target_sha):
         ).encode("ascii")
         pins(raw)
         (root / "workspace/requirements.txt").write_bytes(raw)
-        shutil.copyfile(__file__, root / "workspace/probe.py")
         enter_stage(root, receipt, meter, "interpreter")
         receipt["base"] = verify_base(base, root)
         requirements = root / "workspace/requirements.txt"
         expected = pins(requirements.read_bytes())
         receipt["requirements_sha256"] = sha256(requirements)
         receipt["pin_count"] = len(expected)
-        enter_stage(root, receipt, meter, "binary_download")
+        receipt["base"]["pip_version"] = json.loads(
+            command(
+                [
+                    str(base),
+                    "-I",
+                    "-B",
+                    "-c",
+                    "import pip,json; print(json.dumps(pip.__version__))",
+                ],
+                root=root,
+                timeout=10,
+                capture=True,
+            )
+        )
+        if role == "producer":
+            enter_stage(root, receipt, meter, "binary_download")
+            command(
+                [
+                    str(base),
+                    "-I",
+                    "-B",
+                    "-m",
+                    "pip",
+                    "--isolated",
+                    "--disable-pip-version-check",
+                    "download",
+                    "--only-binary=:all:",
+                    "--no-cache-dir",
+                    "--progress-bar=off",
+                    "--retries=0",
+                    "--timeout=20",
+                    "--index-url=https://pypi.org/simple",
+                    "--dest",
+                    str(root / "wheels"),
+                    "--requirement",
+                    str(requirements),
+                ],
+                root=root,
+                timeout=300,
+            )
+            diagnose_wheels(root, expected, receipt, meter)
+            enter_stage(root, receipt, meter, "artifact_packaging")
+            manifest = {
+                "schema": 1,
+                "source_sha": target_sha,
+                "requirements_sha256": receipt["requirements_sha256"],
+                "run_id": os.environ["GITHUB_RUN_ID"],
+                "attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                "producer": receipt["base"],
+                "wheels": receipt["wheel_files"],
+            }
+            bundle = artifact.create_bundle(root / "wheels", manifest)
+            receipt["bundle_sha256"] = sha256(bundle)
+            require(
+                sha256(base) == receipt["base"]["binary_sha256"], "base_binary_changed"
+            )
+            meter.check_limits()
+            receipt["status"] = "wheel_producer_passed_not_release_ready"
+            return
+        enter_stage(root, receipt, meter, "artifact_ingress")
+        transport_env = {
+            name: os.environ[name]
+            for name in (
+                "GH_ARTIFACT_TOKEN",
+                "ARTIFACT_REPOSITORY",
+                "ARTIFACT_ID",
+                "ARTIFACT_DIGEST",
+                "GITHUB_RUN_ID",
+                "GITHUB_SHA",
+            )
+        }
         command(
             [
-                str(base),
+                "/usr/bin/python3",
                 "-I",
                 "-B",
-                "-m",
-                "pip",
-                "--isolated",
-                "--disable-pip-version-check",
-                "download",
-                "--only-binary=:all:",
-                "--no-cache-dir",
-                "--progress-bar=off",
-                "--retries=0",
-                "--timeout=20",
-                "--index-url=https://pypi.org/simple",
-                "--dest",
+                str(Path(artifact.__file__).resolve()),
                 str(root / "wheels"),
-                "--requirement",
-                str(requirements),
             ],
             root=root,
-            timeout=300,
+            timeout=120,
+            extra_env=transport_env,
+        )
+        transport_env.clear()
+        os.environ.pop("GH_ARTIFACT_TOKEN", None)
+        enter_stage(root, receipt, meter, "artifact_verification")
+        manifest, receipt["manifest_sha256"] = artifact.unpack_bundle(
+            root / "wheels",
+            source_sha=target_sha,
+            requirements_sha=receipt["requirements_sha256"],
+            run_id=os.environ["GITHUB_RUN_ID"],
+            attempt=os.environ["GITHUB_RUN_ATTEMPT"],
+            base=receipt["base"],
         )
         hashed = diagnose_wheels(root, expected, receipt, meter)
+        require(
+            receipt["wheel_files"] == manifest["wheels"], "artifact_metadata_mismatch"
+        )
         locked = root / "workspace/install.txt"
         locked.write_text(hashed)
         enter_stage(root, receipt, meter, "network_isolation")
@@ -646,6 +792,7 @@ def worker(root, base, repository, target_sha):
                 "--disable-pip-version-check",
                 "install",
                 "--no-index",
+                "--no-deps",
                 "--find-links",
                 str(root / "wheels"),
                 "--require-hashes",
@@ -683,17 +830,20 @@ def worker(root, base, repository, target_sha):
         )
         require(
             installed["prefix"] == str(final)
-            and installed["base_executable"] == str(base),
+            and installed["base_executable"] == str(base)
+            and installed["base_prefix"] == receipt["base"]["base_prefix"],
             "environment_identity_mismatch",
         )
         receipt["installed"] = installed
         require(sha256(base) == receipt["base"]["binary_sha256"], "base_binary_changed")
         meter.check_limits()
-        receipt["status"] = "capacity_checkpoint_passed_not_release_ready"
+        receipt["status"] = "offline_consumer_passed_not_release_ready"
     except Exception as error:
         receipt["status"] = "failed"
         receipt["failure"] = (
-            str(error) if isinstance(error, ProofError) else type(error).__name__
+            str(error)
+            if isinstance(error, (ProofError, artifact.ArtifactError))
+            else type(error).__name__
         )
         raise
     finally:
@@ -708,7 +858,7 @@ def worker(root, base, repository, target_sha):
         finally:
             latest = memory_snapshot(cgroup)
             receipt.update(latest)
-            final_failures = memory_failures(latest)
+            final_failures = memory_failures(latest, service_limit)
             if final_failures:
                 receipt["status"] = "failed"
                 receipt["resource_failure"] = ",".join(sorted(final_failures))
@@ -716,7 +866,61 @@ def worker(root, base, repository, target_sha):
                 "nominal 100ms samples plus final check; actual sample gaps recorded; not disk quotas"
             )
             write_receipt(root, receipt)
+            # No surviving command writers: command() always kills/reaps its owned group.
+            # Unknown identities preserve the fixture. CI observer only collects evidence.
+            wait_for_owned_writers(cgroup)
+            owned_cleanup(
+                root,
+                identity,
+                receipt,
+                keep_bundle=role == "producer"
+                and receipt["status"] == "wheel_producer_passed_not_release_ready",
+            )
+            receipt.update(memory_snapshot(cgroup))
+            final_failures.update(memory_failures(receipt, service_limit))
+            if final_failures:
+                receipt["status"] = "failed"
+                receipt["resource_failure"] = ",".join(sorted(final_failures))
+            write_receipt(root, receipt)
             require(not final_failures, ",".join(sorted(final_failures)))
+            if (
+                role == "producer"
+                and receipt["status"] == "wheel_producer_passed_not_release_ready"
+            ):
+                # Publish only the public bundle to the unprivileged CI upload relay.
+                (root / "wheels/bundle.zip").chmod(0o644)
+                (root / "wheels").chmod(0o711)
+                root.chmod(0o711)
+
+
+def owned_cleanup(root, identity, receipt, *, keep_bundle=False):
+    current = root.lstat()
+    require(
+        stat.S_ISDIR(current.st_mode)
+        and current.st_dev == identity.st_dev
+        and current.st_ino == identity.st_ino
+        and current.st_uid == os.geteuid()
+        and stat.S_IMODE(current.st_mode) == 0o700,
+        "cleanup_identity_uncertain",
+    )
+    require(
+        set(path.name for path in root.iterdir()) <= set(DISK_LIMITS),
+        "cleanup_unknown_path",
+    )
+    for name in DISK_LIMITS:
+        path = root / name
+        if not path.exists():
+            continue
+        require(path.is_dir() and not path.is_symlink(), "cleanup_component_uncertain")
+        if name == "receipts":
+            continue
+        if name == "wheels" and keep_bundle:
+            for file in path.iterdir():
+                if file.name != "bundle.zip":
+                    file.unlink()
+        else:
+            shutil.rmtree(path)
+    receipt["cleanup"] = "owned_incomplete_paths_removed_receipts_retained"
 
 
 def read_optional_receipt(file):
@@ -748,7 +952,8 @@ def unit_properties(unit):
     return dict(line.split("=", 1) for line in show.stdout.splitlines() if "=" in line)
 
 
-def controller(base, repository, target_sha, output):
+def controller(base, repository, target_sha, output, role="consumer"):
+    """CI-only launcher/evidence observer; all actual preparation stays in the unit."""
     require(os.environ.get("GITHUB_ACTIONS") == "true", "github_runner_only")
     require(
         sys.platform == "linux" and os.geteuid() == 0, "disposable_linux_root_required"
@@ -758,30 +963,31 @@ def controller(base, repository, target_sha, output):
         "ubuntu_24_required",
     )
     require(re.fullmatch(r"[0-9a-f]{40}", target_sha), "exact_sha_required")
+    # Reserve a unique pathname, but let the metered service create its own fixture.
     root = Path(tempfile.mkdtemp(prefix=ROOT_PREFIX, dir="/tmp"))
+    root.rmdir()
     unit = root.name + ".service"
+    aggregate = PRODUCER_MEMORY_LIMIT if role == "producer" else MEMORY_LIMIT
     receipt = {
         "source_sha": target_sha,
         "unit": unit,
-        "memory_limit": MEMORY_LIMIT,
+        "role": role,
+        "memory_limit": aggregate,
+        "service_limit": aggregate - CONTROL_ALLOWANCE,
+        "external_serial_control_allowance": CONTROL_ALLOWANCE,
         "swap_limit": 0,
-        "disk_limits": DISK_LIMITS,
-        "total_disk_limit": TOTAL_LIMIT,
         "protected_environment_count": 0,
         "not_proved": [
             "immutable_release_publication",
             "protected_environment_reuse",
             "production_host_capacity",
+            "ci_observer_and_artifact_upload_relay_aggregate",
         ],
         "production_identity": False,
         "cleanup": "pending",
     }
     proc = None
     try:
-        for name in DISK_LIMITS:
-            (root / name).mkdir(mode=0o700)
-        for name in ("home", "tmp"):
-            (root / "workspace" / name).mkdir(mode=0o700)
         args = [
             "systemd-run",
             "--quiet",
@@ -789,12 +995,26 @@ def controller(base, repository, target_sha, output):
             "--pipe",
             "--unit=" + unit,
             "--property=MemoryAccounting=yes",
-            "--property=MemoryMax=" + str(MEMORY_LIMIT),
+            "--property=MemoryMax=" + str(aggregate - CONTROL_ALLOWANCE),
             "--property=MemorySwapMax=0",
             "--property=TasksMax=64",
             "--property=RuntimeMaxSec=650",
             "--property=TimeoutStopSec=10",
             "--property=KillMode=control-group",
+            "--property=Type=exec",
+        ]
+        environment_keys = ["GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"]
+        if role == "consumer":
+            environment_keys += [
+                "GH_ARTIFACT_TOKEN",
+                "ARTIFACT_REPOSITORY",
+                "ARTIFACT_ID",
+                "ARTIFACT_DIGEST",
+                "GITHUB_SHA",
+            ]
+        # --setenv=NAME inherits without exposing values in process arguments/logs.
+        args += ["--setenv=" + name for name in environment_keys]
+        args += [
             "/usr/bin/python3",
             "-I",
             "-B",
@@ -808,8 +1028,15 @@ def controller(base, repository, target_sha, output):
             str(repository),
             "--sha",
             target_sha,
+            "--role",
+            role,
         ]
-        proc = subprocess.Popen(args, start_new_session=True)
+        proc = subprocess.Popen(
+            args,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         receipt["unit_returncode"] = proc.wait(timeout=680)
     except Exception as error:
         receipt["controller_failure"] = type(error).__name__
@@ -821,15 +1048,18 @@ def controller(base, repository, target_sha, output):
                 proc.wait(timeout=10)
             receipt["launcher_reaped"] = True
             receipt["systemd"] = unit_properties(unit)
-            if receipt["systemd"].get("LoadState") != "not-found":
-                subprocess.run(["systemctl", "stop", unit], timeout=15, check=True)
-            remaining = unit_properties(unit)
-            require(remaining.get("MainPID") == "0", "owned_processes_not_reaped")
             group = receipt["systemd"].get("ControlGroup", "")
             require(
                 not group or (group.startswith("/") and ROOT_PREFIX in group),
                 "unexpected_owned_cgroup",
             )
+            cgroup = Path("/sys/fs/cgroup") / group.lstrip("/")
+            if group and (cgroup / "memory.peak").exists():
+                receipt["unit_final_memory"] = memory_snapshot(cgroup)
+            if receipt["systemd"].get("LoadState") != "not-found":
+                subprocess.run(["systemctl", "stop", unit], timeout=15, check=True)
+            remaining = unit_properties(unit)
+            require(remaining.get("MainPID") == "0", "owned_processes_not_reaped")
             procs = Path("/sys/fs/cgroup") / group.lstrip("/") / "cgroup.procs"
             require(
                 not group or not procs.exists() or not procs.read_text().strip(),
@@ -852,35 +1082,59 @@ def controller(base, repository, target_sha, output):
             root / "receipts/resources.json"
         )
         receipt["final_allocation_before_cleanup"] = allocated_tree(root)
-        receipt["outside_ci_supervisor"] = {
+        controls_peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss * 1024
+        receipt["outside_ci_observer"] = {
             "controller_peak_rss_bytes": resource.getrusage(
                 resource.RUSAGE_SELF
             ).ru_maxrss
             * 1024,
-            "serial_launcher_control_children_max_rss_bytes": resource.getrusage(
-                resource.RUSAGE_CHILDREN
-            ).ru_maxrss
-            * 1024,
-            "measurement": "Linux getrusage high-water, separate from preparation cgroup; not an aggregate hard limit",
+            "measurement": "CI-only evidence collector RSS, not a target controller or aggregate hard limit; upload-artifact relay not measured",
         }
-        if receipt["cleanup"] == "owned_unit_stopped_mainpid_zero_cgroup_empty":
-            try:
-                shutil.rmtree(root)
-                receipt["cleanup"] += "_fixture_removed"
-            except OSError:
-                receipt["cleanup"] = "failed_fixture_preserved"
+        receipt["external_serial_controls_peak_rss_bytes"] = controls_peak
+        receipt["controls_within_allowance"] = controls_peak <= CONTROL_ALLOWANCE
+        receipt["control_accounting"] = (
+            "serial systemd-run/systemctl children; summed conservative RSS ceiling with service cap, "
+            "not simultaneous measured aggregate; shared system manager kernel/baseline cost remains unproved"
+        )
+        receipt["retained_fixture"] = str(root)
+        # The observer never sweeps interrupted files. Only the metered owner cleans.
         output.mkdir(mode=0o755, parents=True, exist_ok=True)
         raw_receipt = json.dumps(receipt, indent=2, sort_keys=True) + "\n"
         require(len(raw_receipt.encode()) <= 65536, "controller_receipt_bound")
         (output / "capacity.json").write_text(raw_receipt)
         print(raw_receipt, flush=True)
+        if (
+            role == "producer"
+            and receipt["worker"].get("status")
+            == "wheel_producer_passed_not_release_ready"
+        ):
+            with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
+                stream.write(f"bundle={root}/wheels/bundle.zip\n")
     require(
         receipt.get("unit_returncode") == 0
         and "controller_failure" not in receipt
         and receipt["worker"].get("status")
-        == "capacity_checkpoint_passed_not_release_ready"
-        and receipt["cleanup"]
-        == "owned_unit_stopped_mainpid_zero_cgroup_empty_fixture_removed",
+        == (
+            "wheel_producer_passed_not_release_ready"
+            if role == "producer"
+            else "offline_consumer_passed_not_release_ready"
+        )
+        and receipt["cleanup"] == "owned_unit_stopped_mainpid_zero_cgroup_empty"
+        and receipt["worker"].get("cleanup")
+        == "owned_incomplete_paths_removed_receipts_retained"
+        and receipt["controls_within_allowance"]
+        and not memory_failures(receipt["worker"], aggregate - CONTROL_ALLOWANCE)
+        and not memory_failures(
+            receipt["last_resources"], aggregate - CONTROL_ALLOWANCE
+        )
+        and (
+            "unit_final_memory" not in receipt
+            or not memory_failures(
+                receipt["unit_final_memory"], aggregate - CONTROL_ALLOWANCE
+            )
+        )
+        and int(receipt["systemd"].get("MemoryPeak", "0"))
+        <= aggregate - CONTROL_ALLOWANCE,
         "capacity_checkpoint_failed",
     )
 
@@ -888,6 +1142,7 @@ def controller(base, repository, target_sha, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("controller", "worker"))
+    parser.add_argument("--role", choices=("producer", "consumer"), default="consumer")
     parser.add_argument("--base", type=Path, required=True)
     parser.add_argument("--root", type=Path)
     parser.add_argument("--repository", type=Path)
@@ -895,10 +1150,14 @@ def main():
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.mode == "worker":
-        worker(args.root, args.base, args.repository, args.sha)
+        worker(args.root, args.base, args.repository, args.sha, args.role)
     else:
         controller(
-            args.base.resolve(strict=True), args.repository, args.sha, args.output
+            args.base.resolve(strict=True),
+            args.repository,
+            args.sha,
+            args.output,
+            args.role,
         )
 
 
