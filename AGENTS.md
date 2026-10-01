@@ -153,6 +153,18 @@ approval.
   Do not manually pull or restart production to hide a failed workflow; repair
   the workflow with a normal follow-up commit or report an explicitly approved
   recovery action.
+- Routine delivery ends with the exact pushed commit's successful workflow and
+  health checks, not a separate manual SSH/pull/restart step. Docs-only pushes
+  use this same automatic synchronization path. Inspect the matching run with:
+
+  ```bash
+  gh run list --workflow backend-ci.yml --branch master --event push --commit "$(git rev-parse HEAD)" --limit 1
+  gh run view <matching-run-id> --log
+  ```
+
+- When delivering changes across the three repositories, finish one repository's
+  deployment and health verification before pushing the next. A successful run
+  for an older commit is not evidence for the current change.
 
 - Do not restart Nginx, Redis, PostgreSQL, or unrelated services for backend-only
   changes unless the task explicitly requires it.
