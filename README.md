@@ -289,6 +289,13 @@ BUG 记录和修复状态请查看文档：📄 [后端 BUG 跟踪数据库](htt
 
 ## 🤝 贡献指南
 
+日常维护使用轻量主干流程：文档和小修复可直接在干净且同步的 `master` 上完成；
+依赖、架构和后端行为变更使用短分支，验证后快进合入并发布，不要求每次创建 PR。
+每个 Slice 开始时确认状态、远程基线和任务归属；结束时核对精确提交的部署结果，
+再删除已合并且无人使用的本地/远程分支。并行写入需独立 worktree。
+完整首尾检查与 Dependabot 清理规则见 [AGENTS.md](AGENTS.md#git-workflow-and-slice-cleanup)。
+外部贡献仍可使用以下 Fork/PR 方式。
+
 - Fork & clone this repo.
 - 进入虚拟环境：
    ```bash
