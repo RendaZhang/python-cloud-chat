@@ -48,7 +48,8 @@
 * **用户认证**：注册、登录、登出、`/me`；Redis 会话（Cookie：`cc_auth`）。
 * **密码找回**：`/auth/password/forgot|reset`，邮件通过 **阿里云 DirectMail (SMTP)** 发送；重置后支持**会话强制下线（简单版）**。
 * **健康检查**：`/auth/healthz` 同时探测 Redis 与 PostgreSQL。
-* **聊天能力**：`/deepseek_chat`（流式 JSON 行）与 `reset_chat`；应用会话 Cookie：`cc_app`。
+* **聊天能力**：[DeepSeek 流式接口（NDJSON）](docs/API.md#deepseek-%E5%A4%9A%E8%BD%AE%E5%AF%B9%E8%AF%9D%E6%B5%81%E5%BC%8F--post-deepseek_chat)
+  与 `POST /reset_chat`；应用会话 Cookie：`cc_app`。
 * **Chat Guide opt-in mode**：后端公共知识包与 prompt builder 已通过 `/deepseek_chat` 的
   `"guideMode": "public_site"` 请求形态接入；普通 `{ "message": "..." }` 聊天路径保持兼容。
 * **路由前缀**：对内蓝图前缀 `/auth`；对外经 Nginx 为 `/cloudchat/auth/*`。

@@ -184,9 +184,12 @@
 
 ### DeepSeek 多轮对话（流式） — `POST /deepseek_chat`
 
+* **路径**：访客打开前端页面 `GET /deepseek_chat/`。浏览器提交消息到
+  `POST /cloudchat/deepseek_chat`，Nginx 转发到 Flask 的 `POST /deepseek_chat`。
 * **说明**：
 
-  * 采用 **流式 JSON 行** 返回（`Transfer-Encoding: chunked`，`Content-Type: application/json`）。
+  * Flask 以 `Content-Type: application/json` 返回 **逐行 JSON（NDJSON）**。每收到一个非空的模型文本
+    片段，就将它封装为含 `text` 字段的 JSON 对象，末尾写入换行符。客户端收到完整行后再解析并追加文本。
   * `message` 必须是去除首尾空白后非空的字符串，最多 4,000 个 Unicode 字符。
   * 会话历史存储在 `cc_app`（Flask-Session）中，默认最多保留 **`MAX_HISTORY=6`** 个完整
     轮次和 64 KiB；系统提示词最多 8,000 字符，可通过环境变量覆盖。
@@ -197,9 +200,9 @@
 { "message": "你好，DeepSeek" }
 ```
 
-* **返回示例**（每行一段）：
+* **返回示例**（每行均以换行符结束，按顺序拼接 `text` 得到完整回答）：
 
-```json
+```ndjson
 {"text":"Hello"}
 {"text":"!"}
 {"text":" How are you?"}
